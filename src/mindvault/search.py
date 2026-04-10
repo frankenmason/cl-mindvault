@@ -9,9 +9,33 @@ from pathlib import Path
 from .index import index_markdown, load_index
 
 
+def _is_cjk(char: str) -> bool:
+    """Check if a character is CJK (Chinese/Japanese/Korean)."""
+    cp = ord(char)
+    return (
+        (0x3000 <= cp <= 0x9FFF)
+        or (0xAC00 <= cp <= 0xD7AF)  # Hangul Syllables
+        or (0xF900 <= cp <= 0xFAFF)
+    )
+
+
 def _tokenize(text: str) -> list[str]:
-    """Lowercase, split on whitespace, remove tokens with len <= 2."""
-    return [t for t in text.lower().split() if len(t) > 2]
+    """Tokenize text for BM25. Handles Korean/CJK and English.
+
+    - Strips punctuation
+    - English tokens: remove if len <= 2
+    - Korean/CJK tokens: keep all (1-char is meaningful)
+    """
+    import re
+    cleaned = re.sub(r'[^\w\s]', ' ', text.lower())
+    tokens = []
+    for t in cleaned.split():
+        if not t:
+            continue
+        has_cjk = any(_is_cjk(c) for c in t)
+        if has_cjk or len(t) > 2:
+            tokens.append(t)
+    return tokens
 
 
 def _snippet(content_tokens: list[str], query_tokens: set[str], width: int = 30) -> str:
@@ -76,12 +100,20 @@ def search(query: str, index_path: Path, top_k: int = 5) -> list[dict]:
         score = 0.0
 
         for qt in query_tokens:
-            if qt not in idf:
-                continue
+            # Exact match first
             tf = tf_counts.get(qt, 0)
-            if tf == 0:
+            idf_val = idf.get(qt)
+
+            # CJK fuzzy: if no exact match, try prefix/substring matching
+            if tf == 0 and any(_is_cjk(c) for c in qt):
+                for doc_token, count in tf_counts.items():
+                    if doc_token.startswith(qt) or qt in doc_token:
+                        tf += count
+                        if idf_val is None:
+                            idf_val = idf.get(doc_token)
+
+            if tf == 0 or idf_val is None:
                 continue
-            idf_val = idf[qt]
             numerator = tf * (k1 + 1)
             denominator = tf + k1 * (1 - b + b * dl / avgdl)
             score += idf_val * numerator / denominator

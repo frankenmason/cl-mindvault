@@ -10,9 +10,34 @@ from collections import Counter
 from pathlib import Path
 
 
+def _is_cjk(char: str) -> bool:
+    """Check if a character is CJK (Chinese/Japanese/Korean)."""
+    cp = ord(char)
+    return (
+        (0x3000 <= cp <= 0x9FFF)
+        or (0xAC00 <= cp <= 0xD7AF)  # Hangul Syllables
+        or (0xF900 <= cp <= 0xFAFF)
+    )
+
+
 def _tokenize(text: str) -> list[str]:
-    """Lowercase, split on whitespace, remove tokens with len <= 2."""
-    return [t for t in text.lower().split() if len(t) > 2]
+    """Tokenize text for BM25. Handles Korean/CJK and English.
+
+    - Strips punctuation
+    - English tokens: remove if len <= 2
+    - Korean/CJK tokens: keep all (1-char is meaningful)
+    """
+    import re
+    # Strip punctuation, keep alphanumeric + CJK + whitespace
+    cleaned = re.sub(r'[^\w\s]', ' ', text.lower())
+    tokens = []
+    for t in cleaned.split():
+        if not t:
+            continue
+        has_cjk = any(_is_cjk(c) for c in t)
+        if has_cjk or len(t) > 2:
+            tokens.append(t)
+    return tokens
 
 
 def _extract_title(text: str) -> str | None:

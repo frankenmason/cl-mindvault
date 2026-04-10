@@ -5,13 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 
 from mindvault.detect import detect
-from mindvault.extract import extract_ast
+from mindvault.extract import extract_ast, extract_semantic
 from mindvault.build import build_graph
 from mindvault.cluster import cluster, score_cohesion
 from mindvault.analyze import god_nodes, surprising_connections, suggest_questions
 from mindvault.wiki import generate_wiki, _community_label
 from mindvault.export import export_json, export_html
 from mindvault.report import generate_report
+
+
+def _merge_extractions(ast_result: dict, sem_result: dict) -> dict:
+    """Merge AST and semantic extraction results."""
+    return {
+        "nodes": ast_result.get("nodes", []) + sem_result.get("nodes", []),
+        "edges": ast_result.get("edges", []) + sem_result.get("edges", []),
+        "input_tokens": ast_result.get("input_tokens", 0) + sem_result.get("input_tokens", 0),
+        "output_tokens": ast_result.get("output_tokens", 0) + sem_result.get("output_tokens", 0),
+    }
 
 
 def _generate_labels(G, communities: dict[int, list[str]]) -> dict[int, str]:
@@ -40,9 +50,12 @@ def compile(source_dir: Path, output_dir: Path, incremental: bool = True) -> dic
     # 1. Detect files
     detection = detect(source_dir)
     code_files = [source_dir / f for f in detection["files"].get("code", [])]
+    doc_files = [source_dir / f for f in detection["files"].get("document", [])]
 
-    # 2. Extract AST (extract_semantic is still stub, skip)
-    extraction = extract_ast(code_files)
+    # 2. Extract AST + Semantic
+    ast_result = extract_ast(code_files)
+    sem_result = extract_semantic(doc_files, output_dir)
+    extraction = _merge_extractions(ast_result, sem_result)
 
     # 3. Build graph
     G = build_graph(extraction)

@@ -8,6 +8,10 @@ from pathlib import Path
 SKIP_DIRS = {
     "node_modules", ".git", "dist", "out", "__pycache__", "build",
     ".next", ".venv", "venv", ".tox", "egg-info",
+    ".github", "mindvault-out", "worktrees",
+    "coverage", ".nyc_output", ".cache", ".turbo",
+    "ios", "android", "Pods", ".expo", ".dart_tool",
+    "macos", "windows", "linux", "web",
 }
 
 EXT_MAP: dict[str, str] = {}

@@ -7,3 +7,5 @@ build/
 mindvault-out/
 *.egg
 .eggs/
+.mindvault_hashes.json
+.mindvault_dirty.json

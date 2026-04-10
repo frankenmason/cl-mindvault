@@ -388,4 +388,129 @@ def extract_semantic(files: list[Path], cache_dir: Path) -> dict:
     Returns:
         Dict with keys: nodes (list), edges (list), input_tokens (int), output_tokens (int).
     """
-    raise NotImplementedError
+    from mindvault.llm import detect_llm, call_llm, estimate_cost, confirm_api_usage
+    from mindvault.cache import is_dirty, update_cache
+    import json
+    import sys
+
+    empty = {"nodes": [], "edges": [], "input_tokens": 0, "output_tokens": 0}
+
+    # 1. Detect LLM
+    provider = detect_llm()
+    if provider["provider"] is None:
+        return empty
+
+    # 2. API consent check (once for the batch)
+    if not provider["is_local"]:
+        # Estimate total cost
+        total_text = ""
+        for f in files:
+            if f.exists():
+                try:
+                    total_text += f.read_text(encoding="utf-8", errors="ignore")
+                except (OSError, IOError):
+                    pass
+        cost = estimate_cost(total_text, provider)
+        if not confirm_api_usage(provider, cost):
+            return empty
+
+    all_nodes = []
+    all_edges = []
+    input_tokens = 0
+    output_tokens = 0
+
+    extraction_prompt = """Extract key concepts and relationships from this text.
+Return JSON only:
+{
+  "nodes": [{"id": "slug_name", "label": "Human Name", "file_type": "document", "source_file": "path"}],
+  "edges": [{"source": "id1", "target": "id2", "relation": "references|implements|related_to", "confidence": "EXTRACTED|INFERRED", "confidence_score": 0.8}]
+}
+
+Rules:
+- Extract named concepts, entities, technologies, decisions
+- EXTRACTED: explicitly stated relationship
+- INFERRED: reasonable inference
+- Keep nodes under 30 per document
+- Keep edges under 50 per document"""
+
+    for file_path in files:
+        if not file_path.exists():
+            continue
+
+        # Check cache (only process dirty files)
+        if not is_dirty(file_path, cache_dir):
+            continue
+
+        try:
+            text = file_path.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, IOError):
+            continue
+
+        if not text.strip():
+            continue
+
+        # Truncate to max_tokens_per_file
+        from mindvault.config import get as cfg_get
+        max_tokens = cfg_get("max_tokens_per_file", 4000)
+        max_chars = max_tokens * 4
+        if len(text) > max_chars:
+            text = text[:max_chars]
+
+        input_tokens += len(text) // 4
+
+        # Call LLM
+        response = call_llm(extraction_prompt, text, provider)
+        if not response:
+            continue
+
+        output_tokens += len(response) // 4
+
+        # Parse JSON from response
+        cleaned = response.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned = "\n".join(lines)
+
+        try:
+            data = json.loads(cleaned)
+            nodes = data.get("nodes", [])
+            edges = data.get("edges", [])
+
+            # Ensure required fields
+            for node in nodes:
+                if "source_file" not in node or not node["source_file"]:
+                    node["source_file"] = str(file_path)
+                if "file_type" not in node:
+                    node["file_type"] = "document"
+
+            for edge in edges:
+                if "confidence" not in edge:
+                    edge["confidence"] = "INFERRED"
+                if "confidence_score" not in edge:
+                    edge["confidence_score"] = 0.7
+                if "source_file" not in edge:
+                    edge["source_file"] = str(file_path)
+                if "weight" not in edge:
+                    edge["weight"] = 1.0
+
+            all_nodes.extend(nodes)
+            all_edges.extend(edges)
+
+            # Update cache after successful extraction
+            update_cache(file_path, cache_dir)
+
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            # JSON parse failure → skip file, don't crash
+            print(f"Warning: Failed to parse LLM response for {file_path}: {e}", file=sys.stderr)
+            continue
+
+    return {
+        "nodes": all_nodes,
+        "edges": all_edges,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+    }

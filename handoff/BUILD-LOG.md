@@ -115,9 +115,76 @@ PyPI 독립 패키지. `pip install mindvault && mindvault install`
   - README.md includes token savings table, 3-layer diagram, full commands table
   - Git commit does NOT push (user creates GitHub repo first)
 
+### Step 7 — Global Mode + Daemon ✅
+- **Builder**: Bob
+- **Date**: 2026-04-09
+- **Status**: COMPLETE
+- **Files created**: 3 (discover.py, global_.py, daemon.py)
+- **Files modified**: 3 (cli.py, __init__.py)
+- **Verification** (all 5 tests PASS):
+  - Test 1: `discover_projects` — 9 projects found (base-mcp, campusflow, doc-scanner, mindvault, oneshot, seed, taxi-ledger, youtube-longform, youtube-pipeline) — PASS
+  - Test 2: `run_global` — 556 nodes, 787 edges, 184 cross-project edges, 143 wiki pages, 143 index docs — PASS
+  - Test 3: `mindvault query "TTS 음성" --global` — matched 19 TTS nodes across youtube-longform/youtube-pipeline, cross-project shares_name_with edges shown — PASS
+  - Test 4: `mindvault global ... --discover` — 9 projects listed with types — PASS
+  - Test 5: `install_daemon` + `daemon_status` + `uninstall_daemon` — plist created/loaded/unloaded — PASS
+- **Key decisions**:
+  - BFS discovery skips SKIP_DIRS from detect.py, skips nested projects (once found, don't descend)
+  - package.json type inference: checks deps for next/react-native/expo/remotion/react
+  - Cross-project edges: nodes with same label across different projects get `shares_name_with` INFERRED edges
+  - Node IDs prefixed with `{project_name}/` for global uniqueness
+  - Daemon uses macOS launchd plist at ~/Library/LaunchAgents/com.mindvault.watcher.plist
+  - `--global` flag on query switches output_dir to ~/.mindvault/
+  - `global_.py` naming (not `global.py`) because `global` is Python reserved word
+
+### Step 8 — Multi-AI Tool Integration ✅
+- **Builder**: Bob
+- **Date**: 2026-04-09
+- **Status**: COMPLETE
+- **Files created**: 1 (integrations.py)
+- **Files modified**: 2 (cli.py, __init__.py)
+- **Verification** (all 4 tests PASS):
+  - Test 1: `detect_ai_tools` on mindvault project — Claude Code detected via CLAUDE.md — PASS
+  - Test 2: `detect_ai_tools` on taxi-ledger — no AI tool files found (no CLAUDE.md in that dir), prints PASS — PASS
+  - Test 3: `install_all_integrations` in temp dir — 3 tools detected (Claude Code, Cursor, GitHub Copilot), all installed, second run all `already_exists` — PASS
+  - Test 4: `mindvault install` CLI — detects Claude Code, shows already configured, skill registered, git hook installed — PASS
+- **Key decisions**:
+  - `AI_TOOLS` config list with 7 tools (Claude Code, Cursor, GitHub Copilot, Windsurf, Gemini Code Assist, Cline, Aider)
+  - Claude Code gets `## MindVault` section (append_section type), all others get `# MindVault Knowledge Base` block (create_or_append type)
+  - Idempotent: checks for "MindVault" string in existing file content before appending
+  - `cmd_install` now prints detection results for all 7 tools with checkmarks, then installation results, then skill registration and git hook
+  - Parent directories created automatically (.github/, .gemini/) when needed
+  - Only detected tools get rules files created — no spurious file creation
+
+### Step 9 — Semantic Extraction (LLM Auto-Detect + Consent) ✅
+- **Builder**: Bob
+- **Date**: 2026-04-09
+- **Status**: COMPLETE
+- **Files created**: 3 (config.py, llm.py, ingest.py)
+- **Files modified**: 4 (extract.py, compile.py, cli.py, __init__.py)
+- **Verification** (all 6 tests PASS):
+  - Test 1: `detect_llm` — Gemma detected at localhost:8080, model `mlx-community/gemma-4-e4b-it-4bit` — PASS
+  - Test 2: `call_llm` — Local Gemma returns JSON extraction (3 concepts) — PASS
+  - Test 3: `ingest(README.md)` — 13 nodes, 14 edges extracted from README — PASS
+  - Test 4: `extract_semantic` — 10 nodes, 10 edges from doc files — PASS
+  - Test 5: `config` — load/save/get/set all work, persists to `~/.mindvault/config.json` — PASS
+  - Test 6: Full pipeline with semantic — 271 nodes, 373 edges, 40 wiki pages, 52 index docs — PASS
+- **Key decisions**:
+  - `detect_llm` auto-discovers Gemma model name from `/v1/models` endpoint (handles MLX server's full model ID like `mlx-community/gemma-4-e4b-it-4bit`)
+  - `call_llm` uses `max_tokens: 4000` for local models to avoid `finish_reason: length` truncation
+  - Gemma 4 returns `reasoning` field alongside `content` — code correctly accesses `content` only
+  - `compile.py` now calls `extract_ast` + `extract_semantic` and merges via `_merge_extractions`
+  - JSON parse failures in LLM response → warning to stderr, file skipped, pipeline continues
+  - API consent: local LLM = no consent needed; API keys = `confirm_api_usage()` with cost estimate
+  - Config at `~/.mindvault/config.json` with keys: `llm_endpoint`, `auto_approve_api`, `max_tokens_per_file`, `preferred_provider`
+  - `cli.py` gains `config` subcommand (llm, auto-approve, provider, show) and `cmd_ingest` handles URLs
+  - `ingest.py` supports file/URL/directory ingestion with HTML stripping for URLs
+  - All uses `urllib.request` only — zero `requests` dependency
+
 ## Known Gaps
 
 - Cross-file call/import resolution: imports create edges to `{module}_module` IDs which may or may not exist as nodes; dangling ones are filtered by `build_graph`
-- `extract_semantic` stub — needs LLM integration
 - Broken wikilinks: node-level `[[slug]]` references in community pages point to slugs that don't have dedicated wiki pages (193 in self-compile). Could add per-node pages or switch to anchor links.
 - `update_wiki` is minimal (returns 0) — needs community tracking for true incremental updates
+- Image vision analysis: `.png`/`.jpg`/`.webp` files skipped during ingestion (Known Gap per spec)
+- PDF extraction: requires `pdftotext` CLI tool; if missing, PDF files are skipped (not an error)
+- YouTube URL ingestion: `yt-dlp` subtitle extraction not yet implemented (deferred)

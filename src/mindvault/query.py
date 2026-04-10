@@ -9,11 +9,32 @@ from pathlib import Path
 from mindvault.search import search as bm25_search
 
 
+def _is_cjk(char: str) -> bool:
+    """Check if a character is CJK."""
+    cp = ord(char)
+    return (
+        (0x3000 <= cp <= 0x9FFF)
+        or (0xAC00 <= cp <= 0xD7AF)
+        or (0xF900 <= cp <= 0xFAFF)
+    )
+
+
 def _keyword_match(question: str, node_id: str, node_label: str) -> bool:
-    """Check if any keyword from the question matches a node."""
-    q_tokens = set(question.lower().split())
-    # Remove short tokens
-    q_tokens = {t for t in q_tokens if len(t) > 2}
+    """Check if any keyword from the question matches a node.
+
+    Korean/CJK tokens are kept regardless of length.
+    English tokens must be > 2 chars.
+    """
+    import re
+    cleaned = re.sub(r'[^\w\s]', ' ', question.lower())
+    q_tokens = set()
+    for t in cleaned.split():
+        if not t:
+            continue
+        has_cjk = any(_is_cjk(c) for c in t)
+        if has_cjk or len(t) > 2:
+            q_tokens.add(t)
+
     label_lower = node_label.lower()
     nid_lower = node_id.lower()
     for token in q_tokens:

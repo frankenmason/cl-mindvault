@@ -36,15 +36,54 @@ def run(source_dir: Path, output_dir: Path = None, **kwargs) -> dict:
     # Run compile (detect -> extract -> graph -> cluster -> wiki -> export)
     result = compile(source_dir, output_dir, **kwargs)
 
-    # Build search index on wiki pages
+    # Detect again to get doc files (compile doesn't expose detection)
+    detection = detect(source_dir)
+
+    # Build search index on wiki pages + source documents
     wiki_dir = output_dir / "wiki"
     index_path = output_dir / "search_index.json"
     index_docs = 0
     if wiki_dir.exists():
         index_docs = index_markdown(wiki_dir, index_path)
 
+    # Also index source .md documents for better search coverage
+    doc_files = detection["files"].get("document", [])
+    if doc_files:
+        _index_source_docs(source_dir, doc_files, index_path)
+        index_docs += len(doc_files)
+
     result["index_docs"] = index_docs
     return result
+
+
+def _index_source_docs(source_dir: Path, doc_files: list[str], index_path: Path) -> None:
+    """Append source .md documents to the existing search index."""
+    from mindvault.index import load_index, _tokenize, _extract_title, _extract_headings, _hash_content, _compute_idf
+    import json
+
+    index_data = load_index(index_path)
+    docs = index_data.get("docs", {})
+
+    for rel_path in doc_files:
+        full_path = source_dir / rel_path
+        if not full_path.exists():
+            continue
+        try:
+            content = full_path.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, IOError):
+            continue
+        key = f"source/{rel_path}"
+        docs[key] = {
+            "title": _extract_title(content) or Path(rel_path).stem,
+            "headings": _extract_headings(content),
+            "tokens": _tokenize(content),
+            "hash": _hash_content(content),
+        }
+
+    index_data["docs"] = docs
+    index_data["doc_count"] = len(docs)
+    index_data["idf"] = _compute_idf(docs)
+    index_path.write_text(json.dumps(index_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def run_incremental(source_dir: Path, output_dir: Path = None) -> dict:
