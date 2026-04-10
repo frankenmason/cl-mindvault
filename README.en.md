@@ -150,7 +150,10 @@ mindvault-out/
 ├── GRAPH_REPORT.md      # Analysis report (God Nodes, Surprising Connections)
 ├── wiki/
 │   ├── INDEX.md         # Wiki entry point (list of all communities)
-│   └── *.md             # Wiki pages per community
+│   ├── *.md             # Wiki pages per community
+│   ├── _concepts.json   # Concept index (for cross-references)
+│   ├── ingested/        # Knowledge pages from external sources
+│   └── queries/         # Saved query/answer records
 ├── search_index.json    # BM25 search index
 └── sources/             # Collected external materials (URL, PDF, etc.)
 ```
@@ -393,6 +396,40 @@ Search: "telegram bot"
   → Wiki pages (TTS pipeline relationships)
   = All sources unified
 ```
+
+---
+
+## Incremental Knowledge Accumulation (Karpathy LLM Wiki Pattern)
+
+Inspired by [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f), MindVault's wiki **grows richer over time.**
+
+### How It Differs from Existing Tools
+
+| | Traditional | MindVault |
+|---|---|---|
+| **Wiki generation** | Full rebuild every time | Updates only changed parts, preserves existing |
+| **User notes** | Lost on rebuild | `<!-- user-notes -->` section permanently preserved |
+| **External sources** | Managed separately | Auto-classified and merged into existing communities |
+| **Query history** | Lost | Accumulated in `wiki/queries/`, searchable |
+| **Contradiction detection** | None | Auto-detected via local LLM |
+
+### How Knowledge Accumulates
+
+```
+Day 1: mindvault ingest . -> code analysis -> 30 wiki pages created
+        |
+Day 2: Code change -> daemon auto-detects -> only 3 pages updated
+        |
+Day 3: mindvault ingest paper.pdf -> auto-merged into "auth" community
+        |
+Day 4: mindvault query "auth flow" --save -> answer saved to wiki/queries/
+        |
+  ...wiki grows richer. User notes preserved.
+```
+
+### Cross-References
+
+All wiki pages are connected via the `_concepts.json` index. When new material is added, automatic backlinks are created to related existing pages. Use Obsidian's Graph View to visualize the entire knowledge structure.
 
 ---
 

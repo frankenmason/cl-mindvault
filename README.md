@@ -150,7 +150,10 @@ mindvault-out/
 ├── GRAPH_REPORT.md      # 분석 리포트 (God Nodes, Surprising Connections)
 ├── wiki/
 │   ├── INDEX.md         # 위키 진입점 (전체 커뮤니티 목록)
-│   └── *.md             # 커뮤니티별 위키 페이지
+│   ├── *.md             # 커뮤니티별 위키 페이지
+│   ├── _concepts.json   # 개념 인덱스 (상호참조용)
+│   ├── ingested/        # 외부 자료에서 추출한 지식 페이지
+│   └── queries/         # 저장된 질의/답변 기록
 ├── search_index.json    # BM25 검색 인덱스
 └── sources/             # 수집된 외부 자료 (URL, PDF 등)
 ```
@@ -393,6 +396,40 @@ AI: 이미 맥락을 받았으므로 정확한 답변
   → 위키 페이지 (TTS 파이프라인 연결 관계)
   = 모든 소스 통합
 ```
+
+---
+
+## 점진적 지식 축적 (Karpathy LLM Wiki 패턴)
+
+[Andrej Karpathy의 LLM Wiki 패턴](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)에서 영감을 받아, MindVault의 위키는 **시간이 지날수록 풍부해집니다.**
+
+### 기존 도구와의 차이
+
+| | 기존 방식 | MindVault |
+|---|---|---|
+| **위키 생성** | 매번 전체 재생성 | 변경된 부분만 업데이트, 기존 내용 보존 |
+| **사용자 메모** | 재생성 시 삭제됨 | `<!-- user-notes -->` 영역은 영구 보존 |
+| **외부 자료** | 별도 관리 | 기존 커뮤니티에 자동 분류/병합 |
+| **질의 기록** | 사라짐 | `wiki/queries/`에 축적, 검색 가능 |
+| **모순 탐지** | 없음 | 로컬 LLM으로 자동 판단 |
+
+### 지식이 축적되는 흐름
+
+```
+1일차: mindvault ingest . → 코드 분석 → 위키 30페이지 생성
+        ↓
+2일차: 코드 수정 → 데몬이 자동 감지 → 변경된 3페이지만 업데이트
+        ↓
+3일차: mindvault ingest paper.pdf → 기존 "인증" 커뮤니티에 자동 병합
+        ↓
+4일차: mindvault query "인증 흐름" --save → 답변이 wiki/queries/에 저장
+        ↓
+  ...위키가 점점 풍부해짐. 사용자 메모도 보존.
+```
+
+### 상호참조
+
+모든 위키 페이지는 `_concepts.json` 인덱스로 연결됩니다. 새 자료가 추가되면 관련 기존 페이지에 자동 백링크가 생성되어, Obsidian에서 Graph View로 전체 지식 구조를 시각화할 수 있습니다.
 
 ---
 
