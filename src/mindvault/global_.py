@@ -165,6 +165,20 @@ def run_global(root: Path, output_dir: Path = None, max_depth: int = 4) -> dict:
     if wiki_dir.exists():
         index_docs = index_markdown(wiki_dir, index_path)
 
+    # 6b. Also index Claude Code memory files if they exist
+    from mindvault.pipeline import _index_source_docs
+    memory_patterns = [
+        Path.home() / ".claude" / "projects",
+    ]
+    for mem_root in memory_patterns:
+        if mem_root.exists():
+            for memory_dir in mem_root.rglob("memory"):
+                if memory_dir.is_dir():
+                    md_files = [str(f.relative_to(memory_dir)) for f in memory_dir.glob("*.md")]
+                    if md_files:
+                        _index_source_docs(memory_dir, md_files, index_path)
+                        index_docs += len(md_files)
+
     # 7. Save projects manifest
     manifest = {
         "root": str(root),

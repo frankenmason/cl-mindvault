@@ -1,6 +1,6 @@
 """MindVault — unified knowledge management: Search + Graph + Wiki."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 from mindvault.search import search, build_index
 from mindvault.detect import detect
