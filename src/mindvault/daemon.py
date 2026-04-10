@@ -101,7 +101,8 @@ def _macos_uninstall() -> bool:
 
 
 def _macos_status() -> dict:
-    status = {"installed": _MACOS_PLIST_PATH.exists(), "running": False}
+    status = {"installed": _MACOS_PLIST_PATH.exists(), "running": False,
+              "config_path": str(_MACOS_PLIST_PATH)}
     if status["installed"]:
         try:
             r = subprocess.run(["launchctl", "list", LABEL],

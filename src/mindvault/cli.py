@@ -382,8 +382,10 @@ def cmd_daemon(args) -> None:
         status = daemon_status()
         print(f"Installed: {status['installed']}")
         print(f"Running: {status['running']}")
-        print(f"Plist: {status['plist_path']}")
-        if status['last_log_line']:
+        print(f"Mechanism: {status.get('mechanism', 'unknown')}")
+        if status.get('config_path'):
+            print(f"Config: {status['config_path']}")
+        if status.get('last_log_line'):
             print(f"Last log: {status['last_log_line']}")
 
     elif action == "stop":
