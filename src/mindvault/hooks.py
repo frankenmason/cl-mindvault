@@ -6,6 +6,37 @@ import json
 from pathlib import Path
 
 _GIT_HOOK_MARKER = "# MindVault auto-update"
+
+_PROMPT_HOOK_SCRIPT = '''#!/bin/bash
+# MindVault auto-context hook
+# Runs mindvault query on user prompts and injects results as context
+
+PROMPT="$CLAUDE_USER_PROMPT"
+
+# Skip empty or very short prompts
+if [ ${#PROMPT} -lt 10 ]; then exit 0; fi
+
+# Skip slash commands
+if [[ "$PROMPT" == /* ]]; then exit 0; fi
+
+# Skip if mindvault is not installed
+if ! command -v mindvault &>/dev/null; then exit 0; fi
+
+# Skip if no global index exists
+if [ ! -f "$HOME/.mindvault/search_index.json" ]; then
+    # Try local mindvault-out
+    if [ ! -f "mindvault-out/search_index.json" ]; then exit 0; fi
+    RESULT=$(timeout 5 mindvault query "$PROMPT" 2>/dev/null | head -30)
+else
+    RESULT=$(timeout 5 mindvault query "$PROMPT" --global 2>/dev/null | head -30)
+fi
+
+if [ -n "$RESULT" ]; then
+    echo "<mindvault-context>"
+    echo "$RESULT"
+    echo "</mindvault-context>"
+fi
+'''
 _GIT_HOOK_CONTENT = """
 # MindVault auto-update
 mindvault_update() {
@@ -49,6 +80,56 @@ def install_git_hook(repo_dir: Path) -> bool:
 
     hook_file.write_text(content, encoding="utf-8")
     hook_file.chmod(0o755)
+    return True
+
+
+def install_prompt_hook() -> bool:
+    """Install the UserPromptSubmit hook script and register in settings.json.
+
+    This hook automatically runs mindvault query on every user prompt
+    and injects results as context. Claude doesn't need to decide —
+    the system forces it.
+
+    Returns:
+        True if installed successfully.
+    """
+    # 1. Write the hook script
+    hooks_dir = Path.home() / ".claude" / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_path = hooks_dir / "mindvault-hook.sh"
+
+    hook_path.write_text(_PROMPT_HOOK_SCRIPT, encoding="utf-8")
+    hook_path.chmod(0o755)
+
+    # 2. Register in settings.json
+    settings_path = Path.home() / ".claude" / "settings.json"
+    settings = {}
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            settings = {}
+
+    hooks = settings.setdefault("hooks", {})
+    prompt_hooks = hooks.setdefault("UserPromptSubmit", [])
+
+    # Check if already present
+    already_installed = any(
+        "mindvault-hook" in str(h.get("hooks", h.get("command", "")))
+        for h in prompt_hooks
+    )
+    if not already_installed:
+        prompt_hooks.append({
+            "hooks": [{
+                "type": "command",
+                "command": str(hook_path),
+            }]
+        })
+
+    settings_path.write_text(
+        json.dumps(settings, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
     return True
 
 

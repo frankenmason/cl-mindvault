@@ -64,6 +64,13 @@ def cmd_install(args) -> None:
     else:
         print(f"  \u2717 Git hook \u2014 not a git repo (skip)")
 
+    # 5. Install auto-context prompt hook
+    from mindvault.hooks import install_prompt_hook
+    if install_prompt_hook():
+        print(f"  \u2713 Auto-context hook \u2014 installed (AI auto-queries MindVault)")
+    else:
+        print(f"  \u2717 Auto-context hook \u2014 installation failed")
+
     print("\nMindVault is ready. Run `mindvault ingest .` to build your knowledge base.")
 
 
