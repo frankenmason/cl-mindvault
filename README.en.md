@@ -411,7 +411,7 @@ Inspired by [Andrej Karpathy's LLM Wiki pattern](https://gist.github.com/karpath
 | **User notes** | Lost on rebuild | `<!-- user-notes -->` section permanently preserved |
 | **External sources** | Managed separately | Auto-classified and merged into existing communities |
 | **Query history** | Lost | Accumulated in `wiki/queries/`, searchable |
-| **Contradiction detection** | None | Auto-detected via local LLM |
+| **Contradiction detection** | None | 3-level auto-detection (see below) |
 
 ### How Knowledge Accumulates
 
@@ -430,6 +430,20 @@ Day 4: mindvault query "auth flow" --save -> answer saved to wiki/queries/
 ### Cross-References
 
 All wiki pages are connected via the `_concepts.json` index. When new material is added, automatic backlinks are created to related existing pages. Use Obsidian's Graph View to visualize the entire knowledge structure.
+
+### Contradiction Detection
+
+When the same concept appears across multiple wiki pages, `mindvault lint` automatically detects contradictions. It works in 3 levels depending on your environment:
+
+| Environment | How contradictions are judged | Accuracy |
+|---|---|---|
+| **Local LLM available** (Gemma/Ollama) | LLM judges whether two descriptions contradict | High |
+| **Running via subscription AI** (`/mindvault lint`) | Claude/Cursor judges directly | High |
+| **Neither available** | String comparison flags suspicious differences | Basic |
+
+- Local LLM is free, so no consent is needed
+- API keys are never used for lint (no surprise costs)
+- Even basic string comparison catches "same concept, different description" cases
 
 ---
 
