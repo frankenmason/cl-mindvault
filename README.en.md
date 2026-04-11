@@ -70,7 +70,7 @@ mindvault install
 ```
 
 What `mindvault install` performs automatically:
-- Detects the currently used AI tool (supports 7)
+- Detects the currently used AI tool (supports 8)
 - Creates integrated configuration files for each tool
 - Installs Git post-commit hook (auto-updates on commit)
 - Registers Claude Code `/mindvault` Skill
@@ -316,6 +316,7 @@ It automatically generates configuration files matching the detected tool upon r
 | **Gemini Code Assist** | `.gemini/styleguide.md` |
 | **Cline** | `.clinerules` |
 | **Aider** | `CONVENTIONS.md` |
+| **OpenAI Codex CLI** | `AGENTS.md` |
 
 ---
 

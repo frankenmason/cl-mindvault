@@ -70,7 +70,7 @@ mindvault install
 ```
 
 `mindvault install`이 자동으로 수행하는 작업:
-- 현재 사용 중인 AI 도구 감지 (7개 지원)
+- 현재 사용 중인 AI 도구 감지 (8개 지원)
 - 각 도구별 통합 설정 파일 생성
 - Git post-commit hook 설치 (커밋마다 자동 갱신)
 - Claude Code `/mindvault` Skill 등록
@@ -316,6 +316,7 @@ tree-sitter 기반 AST 추출을 지원하는 13개 언어:
 | **Gemini Code Assist** | `.gemini/styleguide.md` |
 | **Cline** | `.clinerules` |
 | **Aider** | `CONVENTIONS.md` |
+| **OpenAI Codex CLI** | `AGENTS.md` |
 
 ---
 

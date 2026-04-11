@@ -48,6 +48,12 @@ AI_TOOLS = [
         "rules_file": "CONVENTIONS.md",
         "type": "create_or_append",
     },
+    {
+        "name": "OpenAI Codex CLI",
+        "detect_files": ["AGENTS.md", ".codex"],
+        "rules_file": "AGENTS.md",
+        "type": "create_or_append",
+    },
 ]
 
 CLAUDE_MD_SECTION = """\
