@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mindvault-ai"
-version = "0.3.1"
+version = "0.3.2"
 description = "Unified knowledge management: Search + Graph + Wiki"
 readme = "README.md"
 license = "MIT"
@@ -29,6 +29,13 @@ dependencies = [
     "python-docx>=1.0",
     "openpyxl>=3.1",
     "python-pptx>=0.6.21",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "build",
+    "twine",
 ]
 
 [project.scripts]
