@@ -693,5 +693,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.3.0 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.3.1 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

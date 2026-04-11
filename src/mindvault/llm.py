@@ -29,9 +29,17 @@ def detect_llm() -> dict:
     from mindvault.config import get as cfg_get
 
     result = _detect_llm_raw()
-    # Final override: user can force a specific model name on any provider
+    # Final override: only applied to local providers (gemma, ollama, custom
+    # OpenAI-compatible endpoints). Remote API providers (anthropic, openai)
+    # have their own model namespaces — forcing e.g. `gemma3:e4b` on OpenAI
+    # would just error at call time. Use provider-specific env vars or config
+    # for remote APIs.
     model_override = cfg_get("llm_model")
-    if model_override and result.get("provider"):
+    if (
+        model_override
+        and result.get("provider")
+        and result.get("is_local")
+    ):
         result = dict(result)
         result["model"] = model_override
     return result

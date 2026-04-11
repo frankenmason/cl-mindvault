@@ -57,8 +57,14 @@ def run(source_dir: Path, output_dir: Path = None, **kwargs) -> dict:
 
 
 def _index_source_docs(source_dir: Path, doc_files: list[str], index_path: Path) -> None:
-    """Append source .md documents to the existing search index."""
+    """Append source documents (.md, .txt, .rst, .docx, .xlsx, .pptx) to the search index.
+
+    For binary Office formats, delegates to mindvault.ingest._extract_text_from_file
+    which uses python-docx / openpyxl / python-pptx to pull plain text.
+    """
     from mindvault.index import load_index, _tokenize, _extract_title, _extract_headings, _hash_content, _compute_idf
+    from mindvault.detect import BINARY_DOCUMENT_EXTS
+    from mindvault.ingest import _extract_text_from_file
     import json
 
     index_data = load_index(index_path)
@@ -68,9 +74,16 @@ def _index_source_docs(source_dir: Path, doc_files: list[str], index_path: Path)
         full_path = source_dir / rel_path
         if not full_path.exists():
             continue
-        try:
-            content = full_path.read_text(encoding="utf-8", errors="ignore")
-        except (OSError, IOError):
+        ext = full_path.suffix.lower()
+        content: str | None
+        if ext in BINARY_DOCUMENT_EXTS:
+            content = _extract_text_from_file(full_path)
+        else:
+            try:
+                content = full_path.read_text(encoding="utf-8", errors="ignore")
+            except (OSError, IOError):
+                content = None
+        if not content:
             continue
         key = f"source/{rel_path}"
         docs[key] = {

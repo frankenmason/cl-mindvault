@@ -27,8 +27,13 @@ _CODE_EXTS = (
 for _e in _CODE_EXTS:
     EXT_MAP[_e] = "code"
 
-for _e in (".md", ".txt", ".rst"):
+for _e in (".md", ".txt", ".rst", ".docx", ".xlsx", ".pptx"):
     EXT_MAP[_e] = "document"
+
+# Binary document formats that cannot be naively read as text. detect() and
+# any caller that treats "document" files as plain UTF-8 must use
+# mindvault.ingest._extract_text_from_file for these instead of read_text().
+BINARY_DOCUMENT_EXTS = frozenset({".docx", ".xlsx", ".pptx", ".pdf"})
 
 for _e in (".pdf",):
     EXT_MAP[_e] = "paper"
@@ -68,7 +73,7 @@ def detect(path: Path) -> dict:
             rel_path = os.path.relpath(full_path, path)
             files[category].append(rel_path)
 
-            if category in ("code", "document"):
+            if category in ("code", "document") and ext not in BINARY_DOCUMENT_EXTS:
                 try:
                     with open(full_path, "r", errors="ignore") as f:
                         content = f.read()

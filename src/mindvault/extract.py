@@ -429,10 +429,15 @@ def extract_document_structure(doc_files: list[Path]) -> dict:
 
 _FRONTMATTER_KEY_RE = re.compile(r"^([\w_-]+)\s*:\s*(.*)$")
 _FRONTMATTER_LIST_RE = re.compile(r"^\[(.*)\]$")
-_INLINE_TAG_RE = re.compile(r"(?:^|\s)#([A-Za-z][\w/-]*)")
+# Tag: any non-digit, non-underscore word char as first char (Unicode letters OK),
+# followed by word chars / slashes / hyphens. Must be preceded by start-of-line or whitespace.
+_INLINE_TAG_RE = re.compile(r"(?:^|\s)#([^\W\d_][\w/-]*)", re.UNICODE)
+# Matches `inline code spans` to strip before scanning for tags (so #define inside
+# backticks is not mistaken for a tag).
+_INLINE_CODE_RE = re.compile(r"`[^`]*`")
 
 
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
+def _parse_frontmatter(text: str) -> tuple[dict, str, int]:
     """Parse minimal YAML frontmatter from the top of a markdown file.
 
     Supports:
@@ -442,21 +447,30 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
           - item1
           - item2
 
-    Returns (metadata_dict, remaining_text). If no frontmatter is found,
-    returns ({}, original_text).
+    Returns (metadata_dict, remaining_text, line_offset).
+    `line_offset` is the number of lines (including the closing `---`) that
+    belonged to the frontmatter block, so callers can preserve real source
+    line numbers after stripping. Returns ({}, original_text, 0) when no
+    frontmatter is found.
     """
     if not text.startswith("---"):
-        return {}, text
+        return {}, text, 0
     # Require a newline after the opening --- marker
     first_nl = text.find("\n")
     if first_nl == -1 or text[3:first_nl].strip():
-        return {}, text
+        return {}, text, 0
     body = text[first_nl + 1:]
     close_match = re.search(r"^---\s*$", body, flags=re.MULTILINE)
     if not close_match:
-        return {}, text
+        return {}, text, 0
     yaml_block = body[:close_match.start()]
     remaining = body[close_match.end():].lstrip("\r\n")
+    # Count the lines that the frontmatter (including both `---` markers) occupied
+    consumed = text[: first_nl + 1 + close_match.end()]
+    line_offset = consumed.count("\n")
+    # Account for the newline immediately after closing `---` that lstrip removed
+    trimmed = body[close_match.end():]
+    line_offset += len(trimmed) - len(trimmed.lstrip("\r\n"))
 
     metadata: dict = {}
     current_key: str | None = None
@@ -491,22 +505,25 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
         else:
             metadata[key] = raw_value.strip('"').strip("'")
         current_key = key
-    return metadata, remaining
+    return metadata, remaining, line_offset
 
 
 def _extract_inline_tags(line: str) -> set[str]:
     """Extract Obsidian-style #tags from a single line of prose.
 
-    Skips pure numbers (#123), hex colors (#fff / #ffffff), and anything that
-    starts with a digit. Matches at line start or after whitespace to avoid
-    catching things like `array[#index]` or preprocessor `#include`.
+    - Supports Unicode letters (including Hangul: `#한글`, CJK, emoji-free scripts)
+    - Inline code spans (`` `...` ``) are stripped first so `` `#define` `` is
+      not mistaken for a tag.
+    - Skips hex color codes (`#fff`, `#ffffff`) and numeric-only tags.
+    - Matches at line start or after whitespace to avoid catching
+      `array[#index]` or `href="#anchor"`.
     """
+    # Strip inline-code spans before scanning
+    scan_target = _INLINE_CODE_RE.sub(" ", line)
     tags: set[str] = set()
-    for m in _INLINE_TAG_RE.finditer(line):
+    for m in _INLINE_TAG_RE.finditer(scan_target):
         tag = m.group(1)
-        if tag[0].isdigit():
-            continue
-        # Hex color: 3, 4, 6, or 8 hex chars
+        # Hex color: 3, 4, 6, or 8 hex chars (ASCII-only so regex stays simple)
         if re.fullmatch(r"[0-9a-fA-F]{3,8}", tag):
             continue
         tags.add(tag)
@@ -527,8 +544,9 @@ def _parse_markdown(
     except (OSError, IOError):
         return
 
-    # Strip YAML frontmatter (Obsidian / Jekyll / Hugo)
-    frontmatter, text = _parse_frontmatter(text)
+    # Strip YAML frontmatter (Obsidian / Jekyll / Hugo). line_offset keeps
+    # source_location line numbers aligned with the original file.
+    frontmatter, text, line_offset = _parse_frontmatter(text)
 
     lines = text.split("\n")
     # Stack of (depth, node_id) for parent-child tracking
@@ -536,9 +554,16 @@ def _parse_markdown(
     in_code_block = False
     code_lang = None
     current_header_id = None
-    # Metadata to attach to the first header node we encounter
+    # Metadata captured for the file-level synthetic node
     pending_frontmatter: dict | None = frontmatter if frontmatter else None
     inline_tags: set[str] = set()
+    # First header encountered — used for the file-level node's contains edge.
+    # Capture it at creation time, NOT inferred from header_stack[0] at EOF
+    # (which would be the last branch's top-level ancestor, not the first header).
+    first_header_id: str | None = None
+
+    def _line_label(idx: int) -> str:
+        return f"line {line_offset + idx + 1}"
 
     for i, line in enumerate(lines):
         # Code block toggle
@@ -555,7 +580,7 @@ def _parse_markdown(
                         "label": code_lang,
                         "file_type": "document",
                         "source_file": source_file,
-                        "source_location": f"line {i + 1}",
+                        "source_location": _line_label(i),
                     })
                     add_edge({
                         "source": current_header_id,
@@ -583,13 +608,15 @@ def _parse_markdown(
                 continue
             node_id = f"{filestem}_{slug}"
             current_header_id = node_id
+            if first_header_id is None:
+                first_header_id = node_id
 
             add_node({
                 "id": node_id,
                 "label": title,
                 "file_type": "document",
                 "source_file": source_file,
-                "source_location": f"line {i + 1}",
+                "source_location": _line_label(i),
             })
 
             # Find parent: pop stack until we find a shallower depth
@@ -667,9 +694,9 @@ def _parse_markdown(
         if combined_tags:
             synth_node["tags"] = sorted(combined_tags)
         add_node(synth_node)
-        # Link file node to the first header if one exists
-        if header_stack:
-            first_header_id = header_stack[0][1]
+        # Link file node to the FIRST header ever seen (captured at creation),
+        # not header_stack[0] which at EOF reflects the last branch's ancestor.
+        if first_header_id is not None:
             add_edge({
                 "source": file_node_id,
                 "target": first_header_id,
@@ -793,16 +820,26 @@ def extract_semantic(files: list[Path], cache_dir: Path) -> dict:
     if provider["provider"] is None:
         return empty
 
+    # Shared text extractor — handles .docx/.xlsx/.pptx/.pdf via ingest helpers
+    from mindvault.detect import BINARY_DOCUMENT_EXTS
+    from mindvault.ingest import _extract_text_from_file
+
+    def _read_doc(p: Path) -> str:
+        ext = p.suffix.lower()
+        if ext in BINARY_DOCUMENT_EXTS:
+            return _extract_text_from_file(p) or ""
+        try:
+            return p.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, IOError):
+            return ""
+
     # 2. API consent check (once for the batch)
     if not provider["is_local"]:
         # Estimate total cost
         total_text = ""
         for f in files:
             if f.exists():
-                try:
-                    total_text += f.read_text(encoding="utf-8", errors="ignore")
-                except (OSError, IOError):
-                    pass
+                total_text += _read_doc(f)
         cost = estimate_cost(total_text, provider)
         if not confirm_api_usage(provider, cost):
             return empty
@@ -834,10 +871,7 @@ Rules:
         if not is_dirty(file_path, cache_dir):
             continue
 
-        try:
-            text = file_path.read_text(encoding="utf-8", errors="ignore")
-        except (OSError, IOError):
-            continue
+        text = _read_doc(file_path)
 
         if not text.strip():
             continue
