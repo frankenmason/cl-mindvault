@@ -54,6 +54,18 @@ AI_TOOLS = [
         "rules_file": "AGENTS.md",
         "type": "create_or_append",
     },
+    {
+        "name": "Google Gemini CLI",
+        "detect_files": ["GEMINI.md"],
+        "rules_file": "GEMINI.md",
+        "type": "create_or_append",
+    },
+    {
+        "name": "Qwen Code",
+        "detect_files": ["QWEN.md", ".qwen"],
+        "rules_file": "QWEN.md",
+        "type": "create_or_append",
+    },
 ]
 
 CLAUDE_MD_SECTION = """\

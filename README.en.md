@@ -70,7 +70,7 @@ mindvault install
 ```
 
 What `mindvault install` performs automatically:
-- Detects the currently used AI tool (supports 8)
+- Detects the currently used AI tool (supports 10)
 - Creates integrated configuration files for each tool
 - Installs Git post-commit hook (auto-updates on commit)
 - Registers Claude Code `/mindvault` Skill
@@ -125,6 +125,20 @@ mindvault ingest /opt/docs/api-reference/
 ```
 
 > **Note:** Paths outside the root folder are not monitored by the daemon. If those files change, you need to run `mindvault ingest` again manually.
+
+#### Supported Document Formats
+
+| Format | Status | Notes |
+|--------|--------|-------|
+| `.md`, `.txt`, `.rst` | ✅ Built-in | No extra install |
+| `.pdf` | ✅ Built-in | Requires system `pdftotext` |
+| `.docx`, `.xlsx`, `.pptx` | ✅ v0.2.6+ | Enable with `pip install mindvault-ai[office]` |
+
+To ingest Office documents (Word / Excel / PowerPoint), install the optional extra:
+
+```bash
+pip install mindvault-ai[office]
+```
 
 ### 2. Use
 
@@ -317,6 +331,8 @@ It automatically generates configuration files matching the detected tool upon r
 | **Cline** | `.clinerules` |
 | **Aider** | `CONVENTIONS.md` |
 | **OpenAI Codex CLI** | `AGENTS.md` |
+| **Google Gemini CLI** | `GEMINI.md` |
+| **Qwen Code** | `QWEN.md` |
 
 ---
 
@@ -580,5 +596,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.2.5 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.2.6 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

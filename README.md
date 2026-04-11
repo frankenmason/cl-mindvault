@@ -70,7 +70,7 @@ mindvault install
 ```
 
 `mindvault install`이 자동으로 수행하는 작업:
-- 현재 사용 중인 AI 도구 감지 (8개 지원)
+- 현재 사용 중인 AI 도구 감지 (10개 지원)
 - 각 도구별 통합 설정 파일 생성
 - Git post-commit hook 설치 (커밋마다 자동 갱신)
 - Claude Code `/mindvault` Skill 등록
@@ -125,6 +125,20 @@ mindvault ingest /opt/docs/api-reference/
 ```
 
 > **주의:** 루트 폴더 밖의 경로는 데몬 자동 감시 대상에 포함되지 않습니다. 해당 파일이 변경되면 `mindvault ingest`를 다시 실행해야 합니다.
+
+#### 지원하는 문서 포맷
+
+| 포맷 | 상태 | 비고 |
+|------|------|------|
+| `.md`, `.txt`, `.rst` | ✅ 기본 지원 | 별도 설치 불필요 |
+| `.pdf` | ✅ 기본 지원 | 시스템에 `pdftotext` 필요 |
+| `.docx`, `.xlsx`, `.pptx` | ✅ v0.2.6+ | `pip install mindvault-ai[office]` 로 활성화 |
+
+Office 문서(워드/엑셀/파워포인트)를 인덱싱하려면 optional extra를 설치하세요:
+
+```bash
+pip install mindvault-ai[office]
+```
 
 ### 2. 사용
 
@@ -317,6 +331,8 @@ tree-sitter 기반 AST 추출을 지원하는 13개 언어:
 | **Cline** | `.clinerules` |
 | **Aider** | `CONVENTIONS.md` |
 | **OpenAI Codex CLI** | `AGENTS.md` |
+| **Google Gemini CLI** | `GEMINI.md` |
+| **Qwen Code** | `QWEN.md` |
 
 ---
 
@@ -580,5 +596,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.2.5 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.2.6 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

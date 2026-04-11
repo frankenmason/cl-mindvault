@@ -41,6 +41,15 @@ def _extract_text_from_file(file_path: Path) -> str | None:
     if ext == ".pdf":
         return _extract_pdf_text(file_path)
 
+    if ext == ".docx":
+        return _extract_docx_text(file_path)
+
+    if ext == ".xlsx":
+        return _extract_xlsx_text(file_path)
+
+    if ext == ".pptx":
+        return _extract_pptx_text(file_path)
+
     if ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
         # Image: skip (vision API is a Known Gap)
         return None
@@ -49,6 +58,64 @@ def _extract_text_from_file(file_path: Path) -> str | None:
     try:
         return file_path.read_text(encoding="utf-8", errors="ignore")
     except (OSError, IOError, UnicodeDecodeError):
+        return None
+
+
+def _extract_docx_text(file_path: Path) -> str | None:
+    """Extract text from .docx. Requires `python-docx` (install via [office] extra)."""
+    try:
+        from docx import Document
+    except ImportError:
+        return None
+    try:
+        doc = Document(str(file_path))
+        parts = [p.text for p in doc.paragraphs if p.text]
+        for table in doc.tables:
+            for row in table.rows:
+                parts.append("\t".join(cell.text for cell in row.cells))
+        return "\n".join(parts) if parts else None
+    except Exception:
+        return None
+
+
+def _extract_xlsx_text(file_path: Path) -> str | None:
+    """Extract text from .xlsx. Requires `openpyxl` (install via [office] extra)."""
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        return None
+    try:
+        wb = load_workbook(str(file_path), data_only=True, read_only=True)
+        lines = []
+        for ws in wb.worksheets:
+            lines.append(f"# Sheet: {ws.title}")
+            for row in ws.iter_rows(values_only=True):
+                cells = ["" if c is None else str(c) for c in row]
+                if any(cells):
+                    lines.append("\t".join(cells))
+        wb.close()
+        return "\n".join(lines) if lines else None
+    except Exception:
+        return None
+
+
+def _extract_pptx_text(file_path: Path) -> str | None:
+    """Extract text from .pptx. Requires `python-pptx` (install via [office] extra)."""
+    try:
+        from pptx import Presentation
+    except ImportError:
+        return None
+    try:
+        prs = Presentation(str(file_path))
+        lines = []
+        for i, slide in enumerate(prs.slides, 1):
+            lines.append(f"# Slide {i}")
+            for shape in slide.shapes:
+                text = getattr(shape, "text", None)
+                if text:
+                    lines.append(text)
+        return "\n".join(lines) if lines else None
+    except Exception:
         return None
 
 
