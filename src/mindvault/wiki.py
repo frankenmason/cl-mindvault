@@ -43,6 +43,106 @@ def _node_to_community(communities: dict[int, list[str]]) -> dict[str, int]:
     return mapping
 
 
+def _find_snippet(content: str, label: str, max_chars: int = 300) -> str | None:
+    """Find a text snippet mentioning *label* inside *content*.
+
+    Looks for the label, then grabs the surrounding paragraph.
+    If the label sits inside a heading, the paragraph *after* the heading is used.
+    """
+    cl = content.lower()
+    ll = label.lower()
+    idx = cl.find(ll)
+    if idx < 0:
+        # Partial match: longest word > 3 chars
+        words = sorted(
+            (w for w in ll.split() if len(w) > 3),
+            key=len, reverse=True,
+        )
+        for w in words:
+            idx = cl.find(w)
+            if idx >= 0:
+                break
+    if idx < 0:
+        return None
+
+    # If label is inside a heading line, skip to the body after it
+    line_start = content.rfind("\n", 0, idx)
+    line_start = line_start + 1 if line_start >= 0 else 0
+    line_end = content.find("\n", idx)
+    if line_end < 0:
+        line_end = len(content)
+    line = content[line_start:line_end].strip()
+    if line.startswith("#"):
+        # Move idx past the heading's trailing blank line
+        body_start = content.find("\n\n", line_end)
+        if body_start >= 0:
+            idx = body_start + 2
+        else:
+            idx = line_end + 1
+
+    # Paragraph boundaries — start from idx
+    start = content.rfind("\n\n", max(0, idx - 500), idx)
+    start = start + 2 if start >= 0 else max(0, idx - 200)
+    end = content.find("\n\n", idx)
+    if end < 0:
+        end = min(len(content), idx + 500)
+
+    raw = content[start:end].strip()
+    if not raw:
+        return None
+    # Flatten to single line, strip heading markers
+    lines = [ln.lstrip("#").strip() for ln in raw.split("\n") if ln.strip()]
+    snippet = " ".join(lines)
+
+    if len(snippet) > max_chars:
+        snippet = snippet[:max_chars].rsplit(" ", 1)[0] + "…"
+    return snippet if len(snippet) > 20 else None
+
+
+def _collect_key_facts(
+    G: nx.DiGraph,
+    members: list[str],
+    max_facts: int = 5,
+    max_chars: int = 300,
+) -> list[str]:
+    """Extract key text snippets from source files for community context.
+
+    Reads source files referenced by community nodes and extracts
+    paragraphs mentioning each node's label, providing concrete
+    facts instead of just structural metadata.
+    """
+    facts: list[str] = []
+    seen: set[str] = set()
+    by_degree = sorted(members, key=lambda n: G.degree(n), reverse=True)
+
+    for nid in by_degree:
+        if len(facts) >= max_facts:
+            break
+        data = G.nodes[nid]
+        src = data.get("source_file", "")
+        label = data.get("label", "")
+        if not src or not label:
+            continue
+        key = f"{src}::{label}"
+        if key in seen:
+            continue
+        seen.add(key)
+
+        src_path = Path(src)
+        if not src_path.exists():
+            continue
+        try:
+            content = src_path.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, IOError):
+            continue
+
+        snippet = _find_snippet(content, label, max_chars)
+        if snippet:
+            facts.append(snippet)
+
+    return facts
+
+
 def generate_wiki(
     G: nx.DiGraph,
     communities: dict[int, list[str]],
@@ -196,6 +296,14 @@ def generate_wiki(
             f"이 커뮤니티는 {top_str}를 중심으로 {dominant_rel} 관계로 연결되어 있다. "
             f"주요 소스 파일은 {src_str}이다."
         )
+
+        # Key facts from source files
+        facts = _collect_key_facts(G, members)
+        if facts:
+            page_lines.append("")
+            page_lines.append("### Key Facts")
+            for fact in facts:
+                page_lines.append(f"- {fact}")
 
         (wiki_dir / f"{slug}.md").write_text("\n".join(page_lines) + "\n", encoding="utf-8")
         pages_generated += 1
@@ -409,6 +517,14 @@ def update_wiki(
             f"이 커뮤니티는 {top_str}를 중심으로 {dominant_rel} 관계로 연결되어 있다. "
             f"주요 소스 파일은 {src_str}이다."
         )
+
+        # Key facts from source files
+        facts = _collect_key_facts(G, members)
+        if facts:
+            page_lines.append("")
+            page_lines.append("### Key Facts")
+            for fact in facts:
+                page_lines.append(f"- {fact}")
 
         new_content = "\n".join(page_lines) + "\n"
 

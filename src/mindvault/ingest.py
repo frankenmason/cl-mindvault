@@ -236,6 +236,12 @@ def _parse_llm_json(response: str, source_file: str) -> dict:
         return {"nodes": [], "edges": []}
 
 
+def _extract_snippet_for_label(text: str, label: str, max_chars: int = 300) -> str | None:
+    """Extract a text snippet about a concept from ingested text."""
+    from mindvault.wiki import _find_snippet
+    return _find_snippet(text, label, max_chars)
+
+
 def _classify_into_communities(nodes: list[dict], concepts_path: Path, wiki_dir: Path) -> dict:
     """Classify extracted nodes into existing communities or new pages.
 
@@ -350,6 +356,39 @@ def _update_wiki_from_extraction(extraction: dict, file_path: Path, output_dir: 
                 content += f"\n## Ingested Sources\n{source_line}\n"
         page_path.write_text(content, encoding="utf-8")
         merged_count += 1
+
+    # Enrich merged pages with Key Facts from source text
+    source_text = _extract_text_from_file(file_path)
+    if source_text:
+        for entry in classified["merged"]:
+            node = entry["node"]
+            label = node.get("label", "")
+            target_page = entry["target"]
+            page_path = wiki_dir / target_page
+            if not page_path.exists() or not label:
+                continue
+
+            snippet = _extract_snippet_for_label(source_text, label)
+            if not snippet:
+                continue
+
+            content = page_path.read_text(encoding="utf-8")
+            if snippet in content:
+                continue  # Already present
+
+            if "### Key Facts" in content:
+                content = content.replace(
+                    "### Key Facts\n",
+                    f"### Key Facts\n- {snippet}\n",
+                )
+            elif "## Ingested Sources" in content:
+                content = content.replace(
+                    "## Ingested Sources",
+                    f"### Key Facts\n- {snippet}\n\n## Ingested Sources",
+                )
+            else:
+                content += f"\n### Key Facts\n- {snippet}\n"
+            page_path.write_text(content, encoding="utf-8")
 
     # Process new nodes — create pages in ingested/
     for node in classified["new"]:
