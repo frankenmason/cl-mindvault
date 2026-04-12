@@ -221,11 +221,16 @@ def _call_openai_compatible(prompt: str, provider: dict) -> str:
     if endpoint.endswith('/v1'):
         endpoint = endpoint[:-3]
     url = f"{endpoint}/v1/chat/completions"
+    from mindvault.config import get as cfg_get
+    is_local = provider.get("is_local", True)
+    max_tokens = cfg_get("llm_max_tokens", 16000 if is_local else 4000)
+    timeout = cfg_get("llm_timeout", 300 if is_local else 60)
+
     body = json.dumps({
         "model": provider["model"],
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.3,
-        "max_tokens": 4000,
+        "max_tokens": max_tokens,
     }).encode("utf-8")
 
     req = urllib.request.Request(
@@ -234,7 +239,7 @@ def _call_openai_compatible(prompt: str, provider: dict) -> str:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    resp = urllib.request.urlopen(req, timeout=60)
+    resp = urllib.request.urlopen(req, timeout=timeout)
     data = json.loads(resp.read().decode("utf-8"))
     return data["choices"][0]["message"]["content"]
 
