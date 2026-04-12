@@ -701,6 +701,15 @@ mindvault lint
 
 ---
 
+## 변경 내역 (v0.4.4)
+
+**Key Facts 자동 추출**: 위키 페이지의 Context 섹션이 구조 메타데이터만 출력하던 문제 해결. 이제 소스 파일에서 실제 텍스트 스니펫을 추출하여 `### Key Facts`로 포함합니다.
+
+- **`_find_snippet()` + `_collect_key_facts()`** (wiki.py) — 커뮤니티 노드의 소스 파일에서 label 관련 본문 paragraph를 추출. 헤딩 내 label은 본문으로 점프
+- **ingest merge 시 Key Facts 자동 추가** (ingest.py) — `mindvault ingest`로 파일을 수집할 때, 기존 커뮤니티 페이지에 소스 스니펫이 자동 삽입
+- **compile 경로 동시 적용** — `generate_wiki()`, `update_wiki()` 모두 Key Facts 포함. full rebuild 시 78페이지 중 45페이지(58%)에 반영
+- **실측 A/B 벤치마크 추가** — MindVault ON/OFF 비교: 도구 호출 6→0회, 탐색 토큰 61.8k→0, 응답 55초→즉시
+
 ## 변경 내역 (v0.4.3)
 
 **노이즈 필터링 + 토큰 budget**: auto-context 훅이 generic 키워드("업데이트" 등)로 44,000+ 토큰을 주입하던 문제 수정.
@@ -787,5 +796,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.4.3 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.4.4 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

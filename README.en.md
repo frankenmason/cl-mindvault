@@ -303,7 +303,20 @@ mindvault-out/
 | Edges | 670 |
 | Cross-Project Links | 33 |
 
-The query token budget can be adjusted with the `--budget` option (Default: 2000 tokens).
+### Real A/B Comparison (Claude Code Opus 4.6, Same Question)
+
+> **Question**: Asking how a native Android bug was fixed in a past project
+
+| | MindVault OFF | MindVault ON |
+|---|---|---|
+| Sub-agent calls | 1 (Explore) | 0 |
+| Tool calls | 6 | 0 |
+| Exploration tokens | 61,800+ | ~0 (memory only) |
+| Response time | ~55s | Instant |
+
+MindVault's auto-context hook pre-injects project context, enabling instant answers without file exploration.
+
+The query token budget can be adjusted with the `--budget` option (Default: 5000 tokens).
 
 ---
 
@@ -690,6 +703,15 @@ mindvault lint
 
 ---
 
+## Changelog (v0.4.4)
+
+**Key Facts auto-extraction**: Wiki Context sections now include actual text snippets from source files, not just structural metadata.
+
+- **`_find_snippet()` + `_collect_key_facts()`** (wiki.py) — extracts body paragraphs from source files for community nodes. Labels inside headings jump to the body text
+- **Key Facts on ingest merge** (ingest.py) — `mindvault ingest` automatically enriches existing community pages with source snippets
+- **Both compile paths** — `generate_wiki()` and `update_wiki()` include Key Facts. Full rebuild: 45/78 pages (58%) enriched
+- **Real A/B benchmark added** — MindVault ON vs OFF: tool calls 6→0, tokens 61.8k→0, response 55s→instant
+
 ## Changelog (v0.4.3)
 
 **Noise filtering + token budget**: the auto-context hook was injecting 44,000+ tokens on generic keywords like "update". Fixed with:
@@ -776,5 +798,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.4.3 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.4.4 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>
