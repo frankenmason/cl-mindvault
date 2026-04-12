@@ -217,7 +217,10 @@ def call_llm(prompt: str, text: str, provider: dict = None) -> str:
 
 def _call_openai_compatible(prompt: str, provider: dict) -> str:
     """Call OpenAI-compatible local API (Gemma, Ollama, custom)."""
-    url = f"{provider['endpoint']}/v1/chat/completions"
+    endpoint = provider['endpoint'].rstrip('/')
+    if endpoint.endswith('/v1'):
+        endpoint = endpoint[:-3]
+    url = f"{endpoint}/v1/chat/completions"
     body = json.dumps({
         "model": provider["model"],
         "messages": [{"role": "user", "content": prompt}],

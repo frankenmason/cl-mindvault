@@ -916,8 +916,10 @@ def _parse_pdf(
         stripped = line.strip()
         if not stripped:
             continue
-        # Heuristic: lines that start with uppercase/number and are short = section headers
-        if len(stripped) < 80 and stripped[0].isupper() and not stripped.endswith("."):
+        # Heuristic: lines that start with uppercase/number/CJK and are short = section headers
+        first_char = stripped[0]
+        is_cjk = '\u3040' <= first_char <= '\u9fff' or '\uAC00' <= first_char <= '\uD7A3'
+        if len(stripped) < 80 and (first_char.isupper() or is_cjk) and not stripped.endswith("."):
             slug = heading_slug(stripped)
             if slug and len(slug) > 2:
                 node_id = _make_canonical_id(source_file, "header", slug, index_root)
