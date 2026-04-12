@@ -490,7 +490,8 @@ def extract_document_structure(
 
     Supports: .md (headers, links, code blocks, wikilinks),
               .txt/.rst (section detection, RST underline headers),
-              .pdf (pdftotext, silent skip if unavailable).
+              .pdf (pdftotext, silent skip if unavailable),
+              .json (key-value extraction, tags/keywords as concepts).
 
     Args:
         doc_files: List of document file paths.
@@ -533,6 +534,11 @@ def extract_document_structure(
                 )
             elif ext == ".pdf":
                 _parse_pdf(
+                    file_path, source_file, _add_node, _add_edge,
+                    _heading_slug, index_root=index_root,
+                )
+            elif ext == ".json":
+                _parse_json(
                     file_path, source_file, _add_node, _add_edge,
                     _heading_slug, index_root=index_root,
                 )
@@ -931,6 +937,92 @@ def _parse_pdf(
                     "source_file": source_file,
                     "source_location": f"line {i + 1}",
                 })
+
+
+def _parse_json(
+    file_path: Path, source_file: str,
+    add_node, add_edge, heading_slug,
+    index_root: Path | None = None,
+) -> None:
+    """Parse JSON files and extract key-value pairs as graph nodes.
+
+    Extracts top-level string fields (title, name, description, etc.)
+    as header nodes, and array-of-strings fields (tags, keywords) as
+    concept nodes linked to the file node.
+    """
+    import json as _json
+
+    try:
+        raw = file_path.read_text(encoding="utf-8", errors="ignore")
+        obj = _json.loads(raw)
+    except (OSError, _json.JSONDecodeError):
+        return
+
+    if not isinstance(obj, dict):
+        return
+
+    # File-level node
+    file_node_id = _make_canonical_id(source_file, "file", "", index_root)
+    add_node({
+        "id": file_node_id,
+        "label": file_path.name,
+        "file_type": "data",
+        "entity_type": "file",
+        "source_file": source_file,
+    })
+
+    # Extract meaningful string fields as header nodes
+    _TITLE_KEYS = {"title", "name", "description", "summary", "subject", "label"}
+    for key, value in obj.items():
+        if isinstance(value, str) and key.lower() in _TITLE_KEYS and value.strip():
+            slug = heading_slug(value)
+            if slug and len(slug) > 2:
+                node_id = _make_canonical_id(source_file, "header", slug, index_root)
+                add_node({
+                    "id": node_id,
+                    "label": value.strip(),
+                    "file_type": "data",
+                    "entity_type": "header",
+                    "source_file": source_file,
+                    "source_location": f"key: {key}",
+                })
+                add_edge({
+                    "source": file_node_id,
+                    "target": node_id,
+                    "relation": "contains",
+                    "confidence": "high",
+                    "confidence_score": 1.0,
+                    "source_file": source_file,
+                    "weight": 1.0,
+                })
+
+    # Extract tags/keywords arrays as concept nodes
+    _TAG_KEYS = {"tags", "keywords", "labels", "categories"}
+    for key, value in obj.items():
+        if isinstance(value, list) and key.lower() in _TAG_KEYS:
+            for tag in value:
+                if isinstance(tag, str) and tag.strip():
+                    slug = heading_slug(tag)
+                    if slug and len(slug) > 1:
+                        node_id = _make_canonical_id(
+                            source_file, "concept", slug, index_root,
+                        )
+                        add_node({
+                            "id": node_id,
+                            "label": tag.strip(),
+                            "file_type": "data",
+                            "entity_type": "concept",
+                            "source_file": source_file,
+                        })
+                        add_edge({
+                            "source": file_node_id,
+                            "target": node_id,
+                            "relation": "tagged",
+                            "confidence": "high",
+                            "confidence_score": 1.0,
+                            "source_file": source_file,
+                            "weight": 0.8,
+                        })
 
 
 def extract_semantic(

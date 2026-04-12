@@ -139,6 +139,7 @@ mindvault ingest /opt/docs/api-reference/
 | `.md`, `.txt`, `.rst` | ✅ 기본 지원 | — |
 | `.pdf` | ✅ 기본 지원 | 시스템에 `pdftotext` 필요 |
 | `.docx`, `.xlsx`, `.pptx` | ✅ v0.2.7+ 기본 지원 | Word / Excel / PowerPoint 자동 인식 |
+| `.json`, `.yaml`, `.yml` | ✅ v0.5.0+ 기본 지원 | 구조화 데이터 자동 인덱싱 (아래 참고) |
 
 추가 설치 없이 `mindvault ingest /path/to/문서폴더` 만 실행하면 위 포맷을 전부 자동 추출합니다.
 
@@ -176,6 +177,7 @@ mindvault status
   [2. Extract]    -- 코드: tree-sitter AST (함수, 클래스, import)
         |             문서: 구조 추출 (헤더 계층, 링크, 코드블록) ← LLM 불필요
         |             PDF: 섹션 구조 추출
+        |             JSON/YAML: 키-값 추출 (title, tags → 그래프 노드)
         v
   [3. Semantic]   -- LLM으로 의미/의도 분석 (선택사항, 코드+문서 모두)
         |
@@ -701,6 +703,19 @@ mindvault lint
 
 ---
 
+## 변경 내역 (v0.5.0)
+
+**구조화 데이터 인덱싱**: `.json`, `.yaml`, `.yml` 파일을 자동으로 검색 인덱스와 지식 그래프에 포함합니다. 프로젝트 산출물(메타데이터, 설정, 빌드 결과)에 담긴 지식이 더 이상 누락되지 않습니다.
+
+- **detect.py**: `data` 카테고리 신설 — `.json`, `.yaml`, `.yml` 파일 자동 감지. 노이즈 파일(`package.json`, `tsconfig.json` 등 30종) 자동 제외
+- **extract.py**: `_parse_json()` 추가 — JSON의 `title`/`name`/`description` 필드를 header 노드로, `tags`/`keywords` 배열을 concept 노드로 자동 추출. LLM 불필요, 0 토큰
+- **pipeline.py**: `_flatten_json()` + `_index_data_files()` 추가 — JSON 구조를 평탄화하여 BM25 검색 인덱스에 등록. full/incremental 파이프라인 모두 적용
+- **compile.py**: data 파일도 그래프 추출 대상에 포함
+
+**실측 효과** (youtube-longform 프로젝트):
+- 기존: "L010 MindVault 영상" 검색 → 결과 0건 ❌
+- v0.5.0: 검색 인덱스 75 → 145 문서 (+70 data 파일), L010 metadata.json이 상위 결과로 노출 ✅
+
 ## 변경 내역 (v0.4.4)
 
 **Key Facts 자동 추출**: 위키 페이지의 Context 섹션이 구조 메타데이터만 출력하던 문제 해결. 이제 소스 파일에서 실제 텍스트 스니펫을 추출하여 `### Key Facts`로 포함합니다.
@@ -796,5 +811,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.4.4 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.5.0 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

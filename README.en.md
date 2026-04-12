@@ -139,6 +139,7 @@ mindvault ingest /opt/docs/api-reference/
 | `.md`, `.txt`, `.rst` | ✅ Built-in | — |
 | `.pdf` | ✅ Built-in | Requires system `pdftotext` |
 | `.docx`, `.xlsx`, `.pptx` | ✅ Built-in (v0.2.7+) | Word / Excel / PowerPoint auto-detected |
+| `.json`, `.yaml`, `.yml` | ✅ Built-in (v0.5.0+) | Structured data auto-indexed (see below) |
 
 No extra install is needed — just run `mindvault ingest /path/to/docs` and all the above formats are extracted automatically.
 
@@ -176,6 +177,7 @@ Source File / URL / PDF / Documents
   [2. Extract]    -- Code: tree-sitter AST (functions, classes, imports)
         |             Documents: structure extraction (header hierarchy, links, code blocks) ← No LLM needed
         |             PDF: section structure extraction
+        |             JSON/YAML: key-value extraction (title, tags → graph nodes)
         v
   [3. Semantic]   -- LLM analyzes meaning/intent (optional, applies to both code and docs)
         |
@@ -703,6 +705,19 @@ mindvault lint
 
 ---
 
+## Changelog (v0.5.0)
+
+**Structured data indexing**: `.json`, `.yaml`, `.yml` files are now automatically included in the search index and knowledge graph. Knowledge embedded in project outputs (metadata, configs, build artifacts) is no longer missed.
+
+- **detect.py**: New `data` category — auto-detects `.json`, `.yaml`, `.yml` files. Noisy config files (`package.json`, `tsconfig.json`, etc. — 30 types) are auto-excluded
+- **extract.py**: `_parse_json()` added — extracts `title`/`name`/`description` fields as header nodes, `tags`/`keywords` arrays as concept nodes. No LLM needed, 0 tokens
+- **pipeline.py**: `_flatten_json()` + `_index_data_files()` added — flattens JSON structure for BM25 search index. Works in both full and incremental pipelines
+- **compile.py**: data files included in graph extraction
+
+**Measured impact** (youtube-longform project):
+- Before: searching "L010 MindVault video" → 0 results ❌
+- v0.5.0: search index 75 → 145 docs (+70 data files), L010 metadata.json appears in top results ✅
+
 ## Changelog (v0.4.4)
 
 **Key Facts auto-extraction**: Wiki Context sections now include actual text snippets from source files, not just structural metadata.
@@ -798,5 +813,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.4.4 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.5.0 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

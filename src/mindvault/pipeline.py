@@ -48,6 +48,12 @@ def run(source_dir: Path, output_dir: Path = None, **kwargs) -> dict:
         _index_source_docs(source_dir, doc_files, index_path)
         index_docs += len(doc_files)
 
+    # Index data files (.json, .yaml, .yml) for search coverage
+    data_files = detection["files"].get("data", [])
+    if data_files:
+        _index_data_files(source_dir, data_files, index_path)
+        index_docs += len(data_files)
+
     result["index_docs"] = index_docs
     return result
 
@@ -95,6 +101,112 @@ def _index_source_docs(source_dir: Path, doc_files: list[str], index_path: Path)
     index_path.write_text(json.dumps(index_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _flatten_json(obj, prefix: str = "") -> list[str]:
+    """Flatten a JSON object into searchable text fragments.
+
+    Extracts all string values and their key paths so that structured data
+    (e.g. metadata.json with title, description, tags) becomes searchable.
+    """
+    fragments: list[str] = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            key_path = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, str):
+                fragments.append(f"{k}: {v}")
+            elif isinstance(v, (int, float)):
+                fragments.append(f"{k}: {v}")
+            elif isinstance(v, list):
+                for item in v:
+                    if isinstance(item, str):
+                        fragments.append(item)
+                    elif isinstance(item, dict):
+                        fragments.extend(_flatten_json(item, key_path))
+            elif isinstance(v, dict):
+                fragments.extend(_flatten_json(v, key_path))
+    elif isinstance(obj, list):
+        for item in obj:
+            if isinstance(item, str):
+                fragments.append(item)
+            elif isinstance(item, dict):
+                fragments.extend(_flatten_json(item, prefix))
+    return fragments
+
+
+def _index_data_files(source_dir: Path, data_files: list[str], index_path: Path) -> None:
+    """Index data files (.json, .yaml, .yml) into the search index.
+
+    Flattens structured data into searchable text so that metadata,
+    configuration, and output files become discoverable via search.
+    """
+    from mindvault.index import load_index, _tokenize, _hash_content, _compute_idf
+
+    index_data = load_index(index_path)
+    docs = index_data.get("docs", {})
+
+    for rel_path in data_files:
+        full_path = source_dir / rel_path
+        if not full_path.exists():
+            continue
+
+        try:
+            raw = full_path.read_text(encoding="utf-8", errors="ignore")
+        except (OSError, IOError):
+            continue
+
+        content_hash = _hash_content(raw)
+        key = f"data/{rel_path}"
+
+        # Skip if unchanged
+        if key in docs and docs[key].get("hash") == content_hash:
+            continue
+
+        ext = full_path.suffix.lower()
+        title = Path(rel_path).stem
+        text_fragments: list[str] = []
+
+        if ext == ".json":
+            try:
+                obj = json.loads(raw)
+                text_fragments = _flatten_json(obj)
+                # Use title/name field if available
+                if isinstance(obj, dict):
+                    title = obj.get("title") or obj.get("name") or title
+            except json.JSONDecodeError:
+                text_fragments = [raw]
+        elif ext in (".yaml", ".yml"):
+            try:
+                import yaml
+                obj = yaml.safe_load(raw)
+                if isinstance(obj, (dict, list)):
+                    text_fragments = _flatten_json(obj)
+                    if isinstance(obj, dict):
+                        title = obj.get("title") or obj.get("name") or title
+                else:
+                    text_fragments = [str(obj)]
+            except Exception:
+                text_fragments = [raw]
+        else:
+            text_fragments = [raw]
+
+        content = "\n".join(text_fragments)
+        tokens = _tokenize(content)
+
+        if not tokens:
+            continue
+
+        docs[key] = {
+            "title": title,
+            "headings": [],
+            "tokens": tokens,
+            "hash": content_hash,
+        }
+
+    index_data["docs"] = docs
+    index_data["doc_count"] = len(docs)
+    index_data["idf"] = _compute_idf(docs)
+    index_path.write_text(json.dumps(index_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def run_incremental(source_dir: Path, output_dir: Path = None) -> dict:
     """Incremental pipeline: only process changed files.
 
@@ -134,25 +246,28 @@ def run_incremental(source_dir: Path, output_dir: Path = None) -> dict:
     detection = detect(source_dir)
     code_files = [source_dir / f for f in detection["files"].get("code", [])]
     doc_files = [source_dir / f for f in detection["files"].get("document", [])]
+    data_files = [source_dir / f for f in detection["files"].get("data", [])]
 
-    # Check which files changed (code + documents)
+    # Check which files changed (code + documents + data)
     dirty_code = get_dirty_files(code_files, output_dir)
     dirty_docs = get_dirty_files(doc_files, output_dir)
-    dirty_files = dirty_code + dirty_docs
+    dirty_data = get_dirty_files(data_files, output_dir)
+    dirty_files = dirty_code + dirty_docs + dirty_data
 
     if not dirty_files:
         return {"changed": 0}
 
-    # Extract AST for dirty code files, document structure for dirty doc files.
+    # Extract AST for dirty code files, document structure for dirty doc/data files.
     # source_dir is the canonical index_root so IDs match a full rebuild.
     from mindvault.extract import extract_document_structure
     code_extraction = (
         extract_ast(dirty_code, index_root=source_dir)
         if dirty_code else {"nodes": [], "edges": []}
     )
+    dirty_docs_and_data = dirty_docs + dirty_data
     doc_extraction = (
-        extract_document_structure(dirty_docs, index_root=source_dir)
-        if dirty_docs else {"nodes": [], "edges": []}
+        extract_document_structure(dirty_docs_and_data, index_root=source_dir)
+        if dirty_docs_and_data else {"nodes": [], "edges": []}
     )
     extraction = {
         "nodes": code_extraction["nodes"] + doc_extraction["nodes"],

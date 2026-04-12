@@ -30,6 +30,25 @@ for _e in _CODE_EXTS:
 for _e in (".md", ".txt", ".rst", ".docx", ".xlsx", ".pptx"):
     EXT_MAP[_e] = "document"
 
+for _e in (".json", ".yaml", ".yml"):
+    EXT_MAP[_e] = "data"
+
+# Config/tooling JSON/YAML files to skip (not useful for knowledge search)
+SKIP_DATA_FILES = {
+    "package.json", "package-lock.json", "tsconfig.json", "tsconfig.node.json",
+    "jsconfig.json", "tslint.json", "eslint.json", ".eslintrc.json",
+    ".prettierrc.json", ".prettierrc.yaml", ".prettierrc.yml",
+    "babel.config.json", "jest.config.json", "vitest.config.json",
+    "postcss.config.json", "tailwind.config.json",
+    "composer.json", "composer.lock", "Pipfile.lock", "poetry.lock",
+    "yarn.lock", "pnpm-lock.yaml", "bun.lockb",
+    ".swcrc", ".babelrc", "nx.json", "turbo.json",
+    "launch.json", "settings.json", "extensions.json",
+    "pubspec.lock", "Podfile.lock", "Gemfile.lock",
+    "app.json", "eas.json", "expo.json",
+    "renovate.json", "dependabot.yml",
+}
+
 # Binary document formats that cannot be naively read as text. detect() and
 # any caller that treats "document" files as plain UTF-8 must use
 # mindvault.ingest._extract_text_from_file for these instead of read_text().
@@ -53,7 +72,7 @@ def detect(path: Path) -> dict:
     Returns:
         Dict with keys: files, total_files, total_words, skipped_dirs.
     """
-    files: dict[str, list[str]] = {"code": [], "document": [], "paper": [], "image": []}
+    files: dict[str, list[str]] = {"code": [], "document": [], "paper": [], "image": [], "data": []}
     total_words = 0
     skipped_dirs = 0
 
@@ -67,6 +86,10 @@ def detect(path: Path) -> dict:
             ext = os.path.splitext(fname)[1].lower()
             category = EXT_MAP.get(ext)
             if category is None:
+                continue
+
+            # Skip noisy config/lock data files
+            if category == "data" and fname.lower() in SKIP_DATA_FILES:
                 continue
 
             full_path = os.path.join(dirpath, fname)

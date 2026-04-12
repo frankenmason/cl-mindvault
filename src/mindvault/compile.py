@@ -213,13 +213,14 @@ def compile(source_dir: Path, output_dir: Path, incremental: bool = True) -> dic
     detection = detect(source_dir)
     code_files = [source_dir / f for f in detection["files"].get("code", [])]
     doc_files = [source_dir / f for f in detection["files"].get("document", [])]
+    data_files = [source_dir / f for f in detection["files"].get("data", [])]
 
     # 2. Extract AST + Document Structure + Semantic.
     # source_dir is passed as the canonical index_root so all node IDs are
     # derived from project-relative paths (collision-safe across same-stem
     # files in different directories).
     ast_result = extract_ast(code_files, index_root=source_dir)
-    doc_result = extract_document_structure(doc_files, index_root=source_dir)
+    doc_result = extract_document_structure(doc_files + data_files, index_root=source_dir)
     sem_result = extract_semantic(doc_files, output_dir, index_root=source_dir)
     extraction = _merge_extractions(ast_result, doc_result, sem_result)
 
