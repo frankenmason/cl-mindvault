@@ -684,6 +684,14 @@ mindvault lint
 
 ---
 
+## 변경 내역 (v0.4.1)
+
+**Hotfix**: v0.4.0에서 `export_json`이 `schema_version` 필드를 안 써서, 이미 canonical ID인 그래프가 다음 incremental 실행 시 마이그레이션 루틴에 재진입하며 노드의 `entity_type`이 `entity`로 잘못 분류될 수 있는 버그를 수정했습니다.
+
+- **export.py**: `export_json()`이 `schema_version: 2`를 그래프 메타데이터에 stamp 합니다
+- **migrate.py**: canonical 포맷(`::` 2개 이상 포함) 감지 → passthrough. 이미 canonical인 ID는 재작성하지 않고 누락된 `entity_type`만 백필합니다
+- **회귀 테스트**: 98 → 109 (+11). canonical passthrough, mixed 레거시+canonical 그래프, `_looks_canonical` 감지, `export_json` schema stamp.
+
 ## 변경 내역 (v0.4.0)
 
 **Path-based canonical ID scheme** — 노드 ID가 파일 경로를 기반으로 생성되도록 리팩토링.
@@ -736,5 +744,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.4.0 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.4.1 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

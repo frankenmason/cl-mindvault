@@ -30,6 +30,17 @@ from typing import Any
 CURRENT_SCHEMA_VERSION = 2
 
 
+def _looks_canonical(node_id: str) -> bool:
+    """True if a node ID is already in 0.4.0+ canonical format.
+
+    The canonical format is ``{rel_path_slug}::{kind}::{local_slug}`` — we
+    detect it by the presence of at least two ``::`` separators, which no
+    pre-0.4.0 ID can possibly contain (``_sanitize_id`` collapses colons
+    to underscores, so legacy IDs are always a single flat slug).
+    """
+    return isinstance(node_id, str) and node_id.count("::") >= 2
+
+
 def migrate_graph_if_needed(
     graph_path: Path, index_root: Path | None = None,
 ) -> dict[str, Any]:
@@ -121,6 +132,24 @@ def migrate_graph_if_needed(
         label = node.get("label", "") or ""
         file_type = node.get("file_type", "") or ""
         source_location = node.get("source_location") or ""
+
+        # Canonical passthrough — if the ID is already in 0.4.0+ format,
+        # keep it as-is. This guards against the 0.4.0 export_json bug that
+        # wrote canonical-content graphs without the `schema_version` stamp,
+        # which migration would then mis-classify back to "entity" kind.
+        if _looks_canonical(old_id):
+            if file_type == "placeholder":
+                dropped_placeholders += 1
+                id_map[old_id] = _make_ref_id(label or old_id)
+                continue
+            id_map[old_id] = old_id
+            # Backfill entity_type if missing (parseable from the ID's kind slot)
+            if "entity_type" not in node:
+                parts = old_id.split("::")
+                if len(parts) >= 2 and parts[1]:
+                    node["entity_type"] = parts[1]
+            new_nodes.append(node)
+            continue
 
         # Placeholder nodes (dangling refs) collapse to unresolved refs.
         # Drop them here — build_graph will recreate them from edge endpoints

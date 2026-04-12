@@ -18,6 +18,7 @@ from mindvault.migrate import (
     CURRENT_SCHEMA_VERSION,
     migrate_graph_if_needed,
     _infer_kind_v1,
+    _looks_canonical,
 )
 
 
@@ -233,3 +234,183 @@ class TestMigrationFallbackOptionE:
         backup = gp.with_suffix(".json.v1.bak")
         assert backup.exists()
         assert backup.read_text() == "malformed {{"
+
+
+class TestLooksCanonical:
+    """0.4.1 regression: detect pre-migrated canonical IDs."""
+
+    def test_detects_basic_canonical(self):
+        assert _looks_canonical("src__auth__utils_py::function::validate") is True
+
+    def test_detects_file_node_empty_local(self):
+        assert _looks_canonical("notes__plan_md::file::") is True
+
+    def test_detects_ref_id(self):
+        assert _looks_canonical("__unresolved__::ref::foo") is True
+
+    def test_detects_global_prefixed_canonical(self):
+        """Global pipeline prefixes IDs with ``{project}/`` — still canonical."""
+        assert _looks_canonical("base-mcp/index_js::module::index") is True
+
+    def test_rejects_legacy_flat_id(self):
+        assert _looks_canonical("plan_file") is False
+        assert _looks_canonical("utils_validate") is False
+        assert _looks_canonical("utils_module") is False
+
+    def test_rejects_single_colon_pair(self):
+        """A single ``::`` is not enough — need at least two (kind + local)."""
+        assert _looks_canonical("foo::bar") is False
+
+    def test_rejects_non_string(self):
+        assert _looks_canonical(None) is False  # type: ignore
+        assert _looks_canonical(123) is False  # type: ignore
+
+
+class TestCanonicalPassthrough:
+    """0.4.1 regression guard for the export_json schema_version bug.
+
+    Before 0.4.1, export_json wrote graph.json without the `schema_version`
+    field, which made migrate_graph_if_needed treat already-canonical graphs
+    as v1 and mis-classify every node as `entity` kind. These tests lock the
+    fix: canonical IDs pass through unchanged and get stamped with
+    schema_version:2.
+    """
+
+    def test_canonical_graph_passthrough_stamps_schema(self, tmp_path: Path):
+        """A graph that's already canonical (but missing schema_version)
+        should get the stamp without touching any node IDs."""
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        out = proj / "mindvault-out"
+        out.mkdir()
+        gp = out / "graph.json"
+
+        canonical_nodes = [
+            {"id": "src__auth__utils_py::module::utils",
+             "label": "utils", "file_type": "code",
+             "source_file": str(proj / "src" / "auth" / "utils.py"),
+             "source_location": None,
+             "entity_type": "module"},
+            {"id": "src__auth__utils_py::function::validate",
+             "label": "validate", "file_type": "code",
+             "source_file": str(proj / "src" / "auth" / "utils.py"),
+             "source_location": "L12",
+             "entity_type": "function"},
+            {"id": "notes__plan_md::file::",
+             "label": "Plan", "file_type": "document",
+             "source_file": str(proj / "notes" / "plan.md"),
+             "source_location": "file",
+             "entity_type": "file"},
+            {"id": "notes__plan_md::header::intro",
+             "label": "Intro", "file_type": "document",
+             "source_file": str(proj / "notes" / "plan.md"),
+             "source_location": "line 5",
+             "entity_type": "header"},
+        ]
+        canonical_links = [
+            {"source": "src__auth__utils_py::module::utils",
+             "target": "src__auth__utils_py::function::validate",
+             "relation": "contains"},
+            {"source": "notes__plan_md::file::",
+             "target": "notes__plan_md::header::intro",
+             "relation": "contains"},
+        ]
+        _write_v1_graph(gp, canonical_nodes, canonical_links)
+
+        result = migrate_graph_if_needed(gp, index_root=proj)
+        assert result["migrated"] is True
+        assert result["node_count"] == 4
+
+        migrated = json.loads(gp.read_text())
+        assert migrated["schema_version"] == CURRENT_SCHEMA_VERSION
+
+        # Critical: node IDs must be unchanged — no re-derivation
+        migrated_ids = {n["id"] for n in migrated["nodes"]}
+        assert migrated_ids == {n["id"] for n in canonical_nodes}
+
+        # Entity types must be unchanged (NOT collapsed to "entity")
+        kinds = {n["id"]: n["entity_type"] for n in migrated["nodes"]}
+        assert kinds["src__auth__utils_py::module::utils"] == "module"
+        assert kinds["src__auth__utils_py::function::validate"] == "function"
+        assert kinds["notes__plan_md::file::"] == "file"
+        assert kinds["notes__plan_md::header::intro"] == "header"
+
+        # Edges must still match (no rewiring of canonical IDs)
+        assert len(migrated["links"]) == 2
+        sources = {link["source"] for link in migrated["links"]}
+        assert sources == {
+            "src__auth__utils_py::module::utils",
+            "notes__plan_md::file::",
+        }
+
+    def test_canonical_graph_backfills_missing_entity_type(self, tmp_path: Path):
+        """A pre-0.4.0 canonical graph might not have entity_type (old bug path)
+        — migration should parse it from the ID's kind slot."""
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        gp = proj / "graph.json"
+        _write_v1_graph(gp, [
+            # Canonical ID but NO entity_type field
+            {"id": "src__a_py::function::foo", "label": "foo",
+             "file_type": "code",
+             "source_file": str(proj / "src" / "a.py"),
+             "source_location": "L10"},
+        ], [])
+
+        migrate_graph_if_needed(gp, index_root=proj)
+        migrated = json.loads(gp.read_text())
+        node = migrated["nodes"][0]
+        assert node["id"] == "src__a_py::function::foo"
+        assert node["entity_type"] == "function"  # backfilled from ID
+
+    def test_mixed_legacy_and_canonical_graph(self, tmp_path: Path):
+        """Edge case: half legacy, half canonical in the same file.
+        Legacy nodes get migrated; canonical ones pass through."""
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        gp = proj / "graph.json"
+        _write_v1_graph(gp, [
+            # Legacy
+            {"id": "utils_validate", "label": "validate", "file_type": "code",
+             "source_file": str(proj / "src" / "utils.py"),
+             "source_location": "L5"},
+            # Already canonical
+            {"id": "notes__plan_md::header::intro", "label": "Intro",
+             "file_type": "document",
+             "source_file": str(proj / "notes" / "plan.md"),
+             "source_location": "line 3",
+             "entity_type": "header"},
+        ], [])
+
+        migrate_graph_if_needed(gp, index_root=proj)
+        migrated = json.loads(gp.read_text())
+        ids = {n["id"] for n in migrated["nodes"]}
+        # Legacy got rewritten
+        assert "src__utils_py::function::validate" in ids
+        # Canonical survived
+        assert "notes__plan_md::header::intro" in ids
+        # No "entity"-collapsed version
+        assert "notes__plan_md::entity::intro" not in ids
+
+
+class TestExportStampsSchemaVersion:
+    """0.4.1 regression: export_json must write schema_version:2.
+
+    This is the underlying fix that avoids triggering the migration
+    mis-classification in the first place.
+    """
+
+    def test_export_json_writes_schema_version(self, tmp_path: Path):
+        import networkx as nx
+        from mindvault.export import export_json
+
+        G = nx.DiGraph()
+        G.add_node("a::file::", label="A", source_file="/x/a.md")
+        G.add_node("a::header::intro", label="Intro", source_file="/x/a.md")
+        G.add_edge("a::file::", "a::header::intro", relation="contains")
+
+        out = tmp_path / "graph.json"
+        export_json(G, {0: ["a::file::", "a::header::intro"]}, out)
+
+        data = json.loads(out.read_text())
+        assert data.get("schema_version") == CURRENT_SCHEMA_VERSION

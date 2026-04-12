@@ -686,6 +686,14 @@ mindvault lint
 
 ---
 
+## Changelog (v0.4.1)
+
+**Hotfix**: fixes a v0.4.0 bug where `export_json` omitted the `schema_version` field, causing already-canonical graphs to re-enter the migration routine on the next incremental run and get their `entity_type` flattened to `entity`.
+
+- **export.py**: `export_json()` now stamps `schema_version: 2` on the graph metadata
+- **migrate.py**: canonical-format detection (IDs with ≥ 2 `::` separators) — already-canonical nodes pass through unchanged; only missing `entity_type` is backfilled from the kind slot
+- **Regression tests**: 98 → 109 (+11). Covers canonical passthrough, mixed legacy/canonical graphs, `_looks_canonical` detection, and `export_json` schema stamping.
+
 ## Changelog (v0.4.0)
 
 **Path-based canonical ID scheme** — node IDs are now derived from file paths.
@@ -738,5 +746,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.4.0 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.4.1 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

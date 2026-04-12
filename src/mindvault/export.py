@@ -30,8 +30,13 @@ def export_json(
         communities: Dict mapping community_id to list of node_ids.
         output_path: Path to write graph.json.
     """
+    from mindvault.migrate import CURRENT_SCHEMA_VERSION
+
     data = node_link_data(G, edges="links")
     data["communities"] = {str(k): v for k, v in communities.items()}
+    # Stamp the schema version so migrate_graph_if_needed treats this file
+    # as already-current on future incremental runs.
+    data["schema_version"] = CURRENT_SCHEMA_VERSION
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
