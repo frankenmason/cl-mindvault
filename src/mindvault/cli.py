@@ -405,6 +405,33 @@ def cmd_global(args) -> None:
             print("\nDaemon installation failed.")
 
 
+def cmd_doctor(args) -> None:
+    """mindvault doctor — diagnose auto-context hook installation end-to-end.
+
+    Runs ``check_prompt_hook()`` and prints pass/fail per check. Exits
+    non-zero if any check failed so CI scripts can gate on it.
+    """
+    from mindvault.hooks import check_prompt_hook
+
+    results = check_prompt_hook()
+
+    print("MindVault auto-context hook diagnostics")
+    print("=" * 50)
+    any_fail = False
+    for r in results:
+        icon = "\u2713" if r["ok"] else "\u2717"
+        print(f"  {icon} {r['name']:<20} {r['detail']}")
+        if not r["ok"]:
+            any_fail = True
+
+    print()
+    if any_fail:
+        print("\u2717 One or more checks failed.")
+        print("  Run `mindvault install` to repair.")
+        sys.exit(1)
+    print("\u2713 All checks passed. Auto-context hook is healthy.")
+
+
 def cmd_daemon(args) -> None:
     """mindvault daemon status/stop/log — manage MindVault daemon."""
     from mindvault.daemon import daemon_status, uninstall_daemon
@@ -510,6 +537,12 @@ def main() -> None:
     sub_daemon = subparsers.add_parser("daemon", help="Manage MindVault daemon")
     sub_daemon.add_argument("action", choices=["status", "stop", "log"], help="Daemon action")
 
+    # doctor
+    subparsers.add_parser(
+        "doctor",
+        help="Diagnose auto-context hook (v0.4.2+)",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -529,6 +562,7 @@ def main() -> None:
         "config": cmd_config,
         "global": cmd_global,
         "daemon": cmd_daemon,
+        "doctor": cmd_doctor,
     }
 
     handler = commands.get(args.command)

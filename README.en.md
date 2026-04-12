@@ -690,6 +690,23 @@ mindvault lint
 
 ---
 
+## Changelog (v0.4.2)
+
+**Critical hotfix**: the `UserPromptSubmit` auto-context hook — the core of MindVault's "session continuity" story — had been **silently broken for months**. It exited 0 on every prompt and never injected a single byte of context.
+
+Three chained root causes:
+1. It read `$CLAUDE_USER_PROMPT`, an environment variable that does not exist in the Claude Code hook environment. The correct spec is to read the prompt from a stdin JSON payload. Every run started with an empty string and hit the length-guard exit.
+2. It used `timeout`, which is not shipped on macOS by default (`gtimeout` via `brew install coreutils` is required). Linux was fine, every macOS install wasn't.
+3. The combination was a pure silent-failure pattern — users had no way to notice the hook was doing nothing.
+
+Fixes:
+- **`_PROMPT_HOOK_SCRIPT` fully rewritten**: stdin JSON parsing via python3, `gtimeout`/`timeout` fallback, no `set -e`, `MINDVAULT_HOOK_VERSION=2` marker so future upgrades can detect old installs.
+- **`install_prompt_hook()` auto-upgrade**: detects hook files that are missing the v2 marker and overwrites them in place. A no-op when already on v2.
+- **New CLI command `mindvault doctor`**: 7-step diagnostic — hook file, version marker, executable bit, settings.json registration, `mindvault` on PATH, search index present, and an end-to-end smoke test that feeds the hook a sample JSON prompt and verifies it emits non-empty wrapped output. Exits non-zero if any check fails.
+- **17 regression tests added** (109 → 126): script-template invariants, auto-upgrade path, direct shell execution with tmp_path sandboxes, doctor diagnostic smoke test, and a lock against `$CLAUDE_USER_PROMPT` ever appearing in a non-comment line of the hook script again.
+
+Upgrade is automatic: `pip install --upgrade mindvault-ai` then run `mindvault install` once and the broken v1 hook gets replaced by v2. Use `mindvault doctor` to verify.
+
 ## Changelog (v0.4.1)
 
 **Hotfix**: fixes a v0.4.0 bug where `export_json` omitted the `schema_version` field, causing already-canonical graphs to re-enter the migration routine on the next incremental run and get their `entity_type` flattened to `entity`.
@@ -750,5 +767,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.4.1 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.4.2 | Built by <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>

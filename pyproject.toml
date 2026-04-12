@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mindvault-ai"
-version = "0.4.1"
+version = "0.4.2"
 description = "Unified knowledge management: Search + Graph + Wiki"
 readme = "README.md"
 license = "MIT"

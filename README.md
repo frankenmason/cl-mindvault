@@ -688,6 +688,23 @@ mindvault lint
 
 ---
 
+## 변경 내역 (v0.4.2)
+
+**Critical hotfix**: `UserPromptSubmit` auto-context 훅이 **몇 달 동안 조용히 작동하지 않던** 버그 수정. 세션 연속성의 핵심 기능이 실제로는 매 프롬프트마다 즉시 exit 0 하고 아무 컨텍스트도 주입하지 않던 상태였습니다.
+
+근본 원인 세 가지:
+1. `$CLAUDE_USER_PROMPT` 환경변수에서 프롬프트를 읽으려고 함 — 이 환경변수는 Claude Code hook 환경에 **존재하지 않음**. 올바른 spec은 stdin으로 JSON payload 전달. 매 실행마다 빈 문자열로 시작해서 길이 체크에서 early exit
+2. `timeout` 명령어 사용 — macOS에 기본 탑재 안 됨 (`brew install coreutils`로 `gtimeout` 설치 필요). 리눅스에서는 작동했지만 macOS 사용자는 전원 영향
+3. 위 둘이 silent failure 패턴이라 사용자가 버그를 발견할 수 없음
+
+수정:
+- **`_PROMPT_HOOK_SCRIPT` 전면 재작성**: stdin JSON 파싱, `gtimeout` fallback, `set -e` 제거, `MINDVAULT_HOOK_VERSION=2` 마커 추가
+- **`install_prompt_hook()` auto-upgrade**: 기존 v1 설치 감지해서 자동으로 덮어씀. 이미 v2인 경우 no-op
+- **새 CLI 명령 `mindvault doctor`**: hook 상태를 7단계 진단 (파일 존재 / 버전 마커 / 실행 권한 / settings 등록 / CLI PATH / 인덱스 존재 / end-to-end smoke test). 실패 항목이 있으면 exit 1
+- **회귀 테스트 17개 추가** (109 → 126): hook 스크립트 템플릿 검증, 자동 업그레이드, end-to-end shell 실행, doctor 진단. `$CLAUDE_USER_PROMPT`가 non-comment 라인에 절대 들어가지 못하도록 lock
+
+업그레이드는 자동입니다: `pip install --upgrade mindvault-ai` 후 `mindvault install`을 한 번 돌리면 깨진 v1 훅이 v2로 교체됩니다. `mindvault doctor`로 상태 확인 가능.
+
 ## 변경 내역 (v0.4.1)
 
 **Hotfix**: v0.4.0에서 `export_json`이 `schema_version` 필드를 안 써서, 이미 canonical ID인 그래프가 다음 incremental 실행 시 마이그레이션 루틴에 재진입하며 노드의 `entity_type`이 `entity`로 잘못 분류될 수 있는 버그를 수정했습니다.
@@ -748,5 +765,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>MindVault v0.4.1 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
+  <sub>MindVault v0.4.2 | 개발: <a href="https://github.com/etinpres">etinpres</a></sub>
 </p>
