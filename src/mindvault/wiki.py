@@ -7,6 +7,18 @@ import re
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+def _safe_label(text: str, max_len: int = 200) -> str:
+    """Sanitize label for markdown embedding.
+    
+    Removes newlines (prevents markdown context escape) and truncates length.
+    Preserves [[wikilink]] and basic punctuation.
+    """
+    if not text:
+        return ""
+    text = str(text).replace("\n", " ").replace("\r", " ").replace("\0", "")
+    if len(text) > max_len:
+        text = text[:max_len] + "..."
+    return text
 
 import networkx as nx
 
@@ -120,7 +132,7 @@ def _collect_key_facts(
             break
         data = G.nodes[nid]
         src = data.get("source_file", "")
-        label = data.get("label", "")
+        label = _safe_label(data.get("label", ""))
         if not src or not label:
             continue
         key = f"{src}::{label}"
@@ -128,7 +140,32 @@ def _collect_key_facts(
             continue
         seen.add(key)
 
-        src_path = Path(src)
+        # Security: resolve symlinks, then verify path is within one of the
+        # safe roots (cwd or ~/.mindvault). Uses Path.is_relative_to (3.9+)
+        # and case-normalized comparison for cross-platform correctness.
+        import os as _os
+        try:
+            src_path = Path(src).resolve(strict=False)
+        except (OSError, RuntimeError):
+            continue
+        _safe_roots = [Path.cwd().resolve(), (Path.home() / ".mindvault").resolve()]
+        _norm_src = _os.path.normcase(str(src_path))
+        inside = False
+        for _root in _safe_roots:
+            _norm_root = _os.path.normcase(str(_root))
+            try:
+                # Prefer Path.is_relative_to when both paths resolve successfully
+                if src_path.is_relative_to(_root):
+                    inside = True
+                    break
+            except AttributeError:
+                # Python < 3.9 fallback
+                pass
+            if _norm_src == _norm_root or _norm_src.startswith(_norm_root + _os.sep):
+                inside = True
+                break
+        if not inside:
+            continue
         if not src_path.exists():
             continue
         try:
