@@ -9,11 +9,11 @@ _GIT_HOOK_MARKER = "# MindVault auto-update"
 
 # Bump this whenever the hook script gains a behavior change so old
 # broken installs get auto-overwritten on the next `mindvault install`.
-MINDVAULT_HOOK_VERSION = 2
+MINDVAULT_HOOK_VERSION = 3
 
-_PROMPT_HOOK_SCRIPT = '''#!/bin/bash
+_PROMPT_HOOK_SCRIPT_TEMPLATE = '''#!/bin/bash
 # MindVault auto-context hook
-# MINDVAULT_HOOK_VERSION=2
+# MINDVAULT_HOOK_VERSION=3
 #
 # Reads stdin JSON (Claude Code UserPromptSubmit spec) and injects
 # `mindvault query` results into the user prompt as `<mindvault-context>`.
@@ -61,7 +61,12 @@ case "$PROMPT" in
 esac
 
 # 4) Need mindvault and a search index
-command -v mindvault >/dev/null 2>&1 || exit 0
+# The path below is resolved at install time. Falls back to PATH lookup
+# if the binary moves.
+MINDVAULT="{{MINDVAULT_PATH}}"
+if [ ! -x "$MINDVAULT" ]; then
+    command -v mindvault >/dev/null 2>&1 && MINDVAULT="mindvault" || exit 0
+fi
 
 QUERY_ARGS=""
 if [ -f "$HOME/.mindvault/search_index.json" ]; then
@@ -81,7 +86,7 @@ fi
 
 # 6) Run the query with explicit token budget (5000) and head-limit output.
 # Budget caps wiki context; head caps total line count as a safety net.
-RESULT=$($TIMEOUT_CMD mindvault query "$PROMPT" --budget 5000 $QUERY_ARGS 2>/dev/null | head -20)
+RESULT=$($TIMEOUT_CMD "$MINDVAULT" query "$PROMPT" --budget 5000 $QUERY_ARGS 2>/dev/null | head -20)
 
 # 7) Emit wrapped context so downstream prompts can see it.
 if [ -n "$RESULT" ]; then
@@ -92,13 +97,14 @@ fi
 
 exit 0
 '''
-_GIT_HOOK_CONTENT = """
+_GIT_HOOK_TEMPLATE = """
 # MindVault auto-update
-mindvault_update() {
-  if command -v mindvault &>/dev/null; then
-    mindvault update --quiet &
+mindvault_update() {{
+  MINDVAULT="{mindvault_path}"
+  if [ -x "$MINDVAULT" ] || command -v mindvault &>/dev/null && MINDVAULT="mindvault"; then
+    "$MINDVAULT" update --quiet &
   fi
-}
+}}
 mindvault_update
 """
 
@@ -123,19 +129,30 @@ def install_git_hook(repo_dir: Path) -> bool:
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hook_file = hooks_dir / "post-commit"
 
+    git_hook_content = _GIT_HOOK_TEMPLATE.format(mindvault_path=_resolve_mindvault_path())
+
     # Check if already installed
     if hook_file.exists():
         existing = hook_file.read_text(encoding="utf-8")
         if _GIT_HOOK_MARKER in existing:
             return True  # Already installed
         # Append to existing hook
-        content = existing.rstrip("\n") + "\n" + _GIT_HOOK_CONTENT
+        content = existing.rstrip("\n") + "\n" + git_hook_content
     else:
-        content = "#!/bin/sh\n" + _GIT_HOOK_CONTENT
+        content = "#!/bin/sh\n" + git_hook_content
 
     hook_file.write_text(content, encoding="utf-8")
     hook_file.chmod(0o755)
     return True
+
+
+def _resolve_mindvault_path() -> str:
+    """Return the absolute path to the mindvault binary being used."""
+    import shutil
+    path = shutil.which("mindvault")
+    if path:
+        return str(Path(path).resolve())
+    return "mindvault"
 
 
 def install_prompt_hook() -> bool:
@@ -144,6 +161,10 @@ def install_prompt_hook() -> bool:
     This hook automatically runs mindvault query on every user prompt
     and injects results as context. Claude doesn't need to decide —
     the system forces it.
+
+    The hook script embeds the absolute path to the mindvault binary
+    resolved at install time, so it works even when installed inside a
+    virtualenv or a non-standard location.
 
     Pre-0.4.2 installs wrote a broken v1 script that read a nonexistent
     env var and used `timeout` (missing on macOS). We detect old copies
@@ -158,20 +179,24 @@ def install_prompt_hook() -> bool:
     hooks_dir.mkdir(parents=True, exist_ok=True)
     hook_path = hooks_dir / "mindvault-hook.sh"
 
+    mindvault_bin = _resolve_mindvault_path()
+    script = _PROMPT_HOOK_SCRIPT_TEMPLATE.replace("{{MINDVAULT_PATH}}", mindvault_bin)
+
     # Auto-upgrade: overwrite any prior install that does not carry the
-    # current version marker. This fixes users upgrading from 0.4.1 or
-    # earlier who are still running the broken v1 script.
+    # current version marker OR if the embedded path has changed (e.g.
+    # user reinstalled in a different venv).
     needs_write = True
     if hook_path.exists():
         try:
             existing = hook_path.read_text(encoding="utf-8")
-            if f"MINDVAULT_HOOK_VERSION={MINDVAULT_HOOK_VERSION}" in existing:
-                needs_write = False  # already on current version
+            if (f"MINDVAULT_HOOK_VERSION={MINDVAULT_HOOK_VERSION}" in existing
+                    and mindvault_bin in existing):
+                needs_write = False  # same version, same path
         except (OSError, UnicodeDecodeError):
             pass
 
     if needs_write:
-        hook_path.write_text(_PROMPT_HOOK_SCRIPT, encoding="utf-8")
+        hook_path.write_text(script, encoding="utf-8")
     hook_path.chmod(0o755)
 
     # 2. Register in settings.json

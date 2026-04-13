@@ -6,7 +6,7 @@ The v1 hook script was silently broken for months:
   - ran with implicit `set -e`, so any failure killed the hook silently
 
 These tests lock the v2 fix so a regression could not sneak past the
-`_PROMPT_HOOK_SCRIPT` template or the install path.
+`_PROMPT_HOOK_SCRIPT_TEMPLATE` template or the install path.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import pytest
 
 from mindvault.hooks import (
     MINDVAULT_HOOK_VERSION,
-    _PROMPT_HOOK_SCRIPT,
+    _PROMPT_HOOK_SCRIPT_TEMPLATE,
     check_prompt_hook,
     install_prompt_hook,
 )
@@ -32,7 +32,7 @@ class TestPromptHookScriptTemplate:
     def test_version_marker_present(self):
         assert (
             f"MINDVAULT_HOOK_VERSION={MINDVAULT_HOOK_VERSION}"
-            in _PROMPT_HOOK_SCRIPT
+            in _PROMPT_HOOK_SCRIPT_TEMPLATE
         )
         assert MINDVAULT_HOOK_VERSION >= 2
 
@@ -43,38 +43,38 @@ class TestPromptHookScriptTemplate:
         note), so we only assert it's absent from non-comment lines.
         """
         offending = [
-            line for line in _PROMPT_HOOK_SCRIPT.splitlines()
+            line for line in _PROMPT_HOOK_SCRIPT_TEMPLATE.splitlines()
             if "$CLAUDE_USER_PROMPT" in line and not line.lstrip().startswith("#")
         ]
         assert offending == [], f"v1 env-var reference survived: {offending}"
-        assert "cat" in _PROMPT_HOOK_SCRIPT
-        assert "json.loads" in _PROMPT_HOOK_SCRIPT
+        assert "cat" in _PROMPT_HOOK_SCRIPT_TEMPLATE
+        assert "json.loads" in _PROMPT_HOOK_SCRIPT_TEMPLATE
 
     def test_has_gtimeout_fallback(self):
         """macOS does not ship `timeout` — must fall back to gtimeout."""
-        assert "gtimeout" in _PROMPT_HOOK_SCRIPT
+        assert "gtimeout" in _PROMPT_HOOK_SCRIPT_TEMPLATE
 
     def test_no_hard_set_e(self):
         """Implicit set -e caused silent short-circuits in v1 after early
         error branches. v2 relies on explicit `|| true` / early exits."""
         # allow `set -e` only inside a comment (we mention it in the header)
-        for line in _PROMPT_HOOK_SCRIPT.splitlines():
+        for line in _PROMPT_HOOK_SCRIPT_TEMPLATE.splitlines():
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
             assert "set -e" not in stripped, f"unexpected set -e: {line!r}"
 
     def test_emits_wrapped_context(self):
-        assert "<mindvault-context>" in _PROMPT_HOOK_SCRIPT
-        assert "</mindvault-context>" in _PROMPT_HOOK_SCRIPT
+        assert "<mindvault-context>" in _PROMPT_HOOK_SCRIPT_TEMPLATE
+        assert "</mindvault-context>" in _PROMPT_HOOK_SCRIPT_TEMPLATE
 
     def test_respects_prompt_length_guard(self):
         """Very short prompts are noise — hook should skip them."""
-        assert "-lt 10" in _PROMPT_HOOK_SCRIPT
+        assert "-lt 10" in _PROMPT_HOOK_SCRIPT_TEMPLATE
 
     def test_slash_commands_skipped(self):
         """Slash commands go straight to Claude Code, not the hook."""
-        assert "/*)" in _PROMPT_HOOK_SCRIPT  # case pattern
+        assert "/*)" in _PROMPT_HOOK_SCRIPT_TEMPLATE  # case pattern
 
 
 class TestInstallPromptHook:
@@ -168,7 +168,7 @@ class TestRunHookEndToEnd:
 
     def test_empty_stdin_exits_clean(self, tmp_path):
         hook_path = tmp_path / "hook.sh"
-        hook_path.write_text(_PROMPT_HOOK_SCRIPT)
+        hook_path.write_text(_PROMPT_HOOK_SCRIPT_TEMPLATE)
         hook_path.chmod(0o755)
 
         proc = subprocess.run(
@@ -183,7 +183,7 @@ class TestRunHookEndToEnd:
 
     def test_short_prompt_skipped(self, tmp_path):
         hook_path = tmp_path / "hook.sh"
-        hook_path.write_text(_PROMPT_HOOK_SCRIPT)
+        hook_path.write_text(_PROMPT_HOOK_SCRIPT_TEMPLATE)
         hook_path.chmod(0o755)
 
         proc = subprocess.run(
@@ -198,7 +198,7 @@ class TestRunHookEndToEnd:
 
     def test_slash_command_skipped(self, tmp_path):
         hook_path = tmp_path / "hook.sh"
-        hook_path.write_text(_PROMPT_HOOK_SCRIPT)
+        hook_path.write_text(_PROMPT_HOOK_SCRIPT_TEMPLATE)
         hook_path.chmod(0o755)
 
         proc = subprocess.run(
@@ -215,7 +215,7 @@ class TestRunHookEndToEnd:
         """When neither global nor local index exists, hook must skip
         silently — it must never block the user's prompt."""
         hook_path = tmp_path / "hook.sh"
-        hook_path.write_text(_PROMPT_HOOK_SCRIPT)
+        hook_path.write_text(_PROMPT_HOOK_SCRIPT_TEMPLATE)
         hook_path.chmod(0o755)
 
         fake_home = tmp_path / "home"
