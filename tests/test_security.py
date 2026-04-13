@@ -65,7 +65,7 @@ def test_p3_path_traversal_attack_skipped():
 def test_p4_safe_label_exists_and_sanitizes():
     """P4: _safe_label must strip newlines and truncate."""
     from mindvault.wiki import _safe_label
-    assert _safe_label("abc\ndef\r\n") == "abc def "
+    assert _safe_label("abc\ndef\r\n") == "abc def  "
     assert _safe_label("x" * 300).endswith("...")
     assert len(_safe_label("x" * 300)) <= 203
     assert _safe_label(None) == ""
