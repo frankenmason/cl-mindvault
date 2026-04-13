@@ -9,11 +9,11 @@ _GIT_HOOK_MARKER = "# MindVault auto-update"
 
 # Bump this whenever the hook script gains a behavior change so old
 # broken installs get auto-overwritten on the next `mindvault install`.
-MINDVAULT_HOOK_VERSION = 3
+MINDVAULT_HOOK_VERSION = 4
 
 _PROMPT_HOOK_SCRIPT_TEMPLATE = '''#!/bin/bash
 # MindVault auto-context hook
-# MINDVAULT_HOOK_VERSION=3
+# MINDVAULT_HOOK_VERSION=4
 #
 # Reads stdin JSON (Claude Code UserPromptSubmit spec) and injects
 # `mindvault query` results into the user prompt as `<mindvault-context>`.
@@ -30,6 +30,12 @@ _PROMPT_HOOK_SCRIPT_TEMPLATE = '''#!/bin/bash
 
 # No `set -e` — any failure silently falls through so the user's prompt
 # still reaches Claude. Context injection is best-effort.
+
+# 0) Security: opt-in gate. Hook only active if .mindvault-auto-context
+# marker file exists in current working directory (CL policy S64).
+if [ ! -f ".mindvault-auto-context" ] && [ ! -f "$HOME/.mindvault-auto-context" ]; then
+    exit 0
+fi
 
 # 1) Read stdin (Claude Code hook contract)
 INPUT="$(cat 2>/dev/null || true)"
