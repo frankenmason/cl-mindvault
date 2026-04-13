@@ -26,7 +26,10 @@ def cmd_install(args) -> None:
         if tool["name"] in detected_names:
             # Find the detected_file for this tool
             det = next(t for t in detected if t["name"] == tool["name"])
-            print(f"  \u2713 {tool['name']} ({det['detected_file']} found)")
+            if det["detected_file"]:
+                print(f"  \u2713 {tool['name']} ({det['detected_file']} found)")
+            else:
+                print(f"  \u2713 {tool['name']} (detected)")
         else:
             print(f"  \u2717 {tool['name']} (not detected)")
 
