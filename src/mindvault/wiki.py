@@ -7,6 +7,14 @@ import re
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+from mindvault.canonicalize import md_escape_label, safe_slugify
+
+def _safe_label(text, max_len: int = 200) -> str:
+    """Back-compat alias. Delegates to canonicalize.md_escape_label.
+    
+    Pre-P6 callers kept working while escape hardening happens in canonicalize module.
+    """
+    return md_escape_label(text)
 
 import networkx as nx
 
@@ -29,7 +37,7 @@ def _community_label(G: nx.DiGraph, members: list[str]) -> str:
     top = by_degree[:2]
     parts = []
     for nid in top:
-        lbl = G.nodes[nid].get("label", nid)
+        lbl = _safe_label(G.nodes[nid].get("label", nid))
         parts.append(lbl)
     return " & ".join(parts)
 
@@ -120,7 +128,7 @@ def _collect_key_facts(
             break
         data = G.nodes[nid]
         src = data.get("source_file", "")
-        label = data.get("label", "")
+        label = _safe_label(data.get("label", ""))
         if not src or not label:
             continue
         key = f"{src}::{label}"
@@ -128,7 +136,32 @@ def _collect_key_facts(
             continue
         seen.add(key)
 
-        src_path = Path(src)
+        # Security: resolve symlinks, then verify path is within one of the
+        # safe roots (cwd or ~/.mindvault). Uses Path.is_relative_to (3.9+)
+        # and case-normalized comparison for cross-platform correctness.
+        import os as _os
+        try:
+            src_path = Path(src).resolve(strict=False)
+        except (OSError, RuntimeError):
+            continue
+        _safe_roots = [Path.cwd().resolve(), (Path.home() / ".mindvault").resolve()]
+        _norm_src = _os.path.normcase(str(src_path))
+        inside = False
+        for _root in _safe_roots:
+            _norm_root = _os.path.normcase(str(_root))
+            try:
+                # Prefer Path.is_relative_to when both paths resolve successfully
+                if src_path.is_relative_to(_root):
+                    inside = True
+                    break
+            except AttributeError:
+                # Python < 3.9 fallback
+                pass
+            if _norm_src == _norm_root or _norm_src.startswith(_norm_root + _os.sep):
+                inside = True
+                break
+        if not inside:
+            continue
         if not src_path.exists():
             continue
         try:
@@ -193,7 +226,7 @@ def generate_wiki(
     lines.append("## God Nodes")
     for nid in god_nodes:
         data = G.nodes[nid]
-        lbl = data.get("label", nid)
+        lbl = _safe_label(data.get("label", nid))
         deg = G.degree(nid)
         slug = _slugify(lbl)
         lines.append(f"- [[{slug}]] -- {deg} connections")
@@ -223,7 +256,7 @@ def generate_wiki(
 
         for nid in by_degree:
             data = G.nodes[nid]
-            nlabel = data.get("label", nid)
+            nlabel = _safe_label(data.get("label", nid))
             src_file = data.get("source_file", "")
             deg = G.degree(nid)
             nslug = _slugify(nlabel)
@@ -231,16 +264,16 @@ def generate_wiki(
 
             # Outgoing edges
             for _, target, edata in G.out_edges(nid, data=True):
-                tlabel = G.nodes[target].get("label", target) if target in G else target
+                tlabel = _safe_label(G.nodes[target].get("label", target) if target in G else target)
                 tslug = _slugify(tlabel)
-                rel = edata.get("relation", "related")
+                rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - -> {rel} -> [[{tslug}]]")
 
             # Incoming edges
             for source, _, edata in G.in_edges(nid, data=True):
-                slabel = G.nodes[source].get("label", source) if source in G else source
+                slabel = _safe_label(G.nodes[source].get("label", source) if source in G else source)
                 sslug = _slugify(slabel)
-                rel = edata.get("relation", "related")
+                rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - <- {rel} <- [[{sslug}]]")
 
         # Internal relationships
@@ -251,7 +284,7 @@ def generate_wiki(
                 if v in member_set:
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
-                    rel = edata.get("relation", "related")
+                    rel = _safe_label(edata.get("relation", "related"))
                     conf = edata.get("confidence", "EXTRACTED")
                     page_lines.append(f"- {ulabel} -> {rel} -> {vlabel} [{conf}]")
 
@@ -266,7 +299,7 @@ def generate_wiki(
                     other_slug = _slugify(other_lbl)
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
-                    rel = edata.get("relation", "related")
+                    rel = _safe_label(edata.get("relation", "related"))
                     page_lines.append(f"- {ulabel} -> {rel} -> {vlabel} (-> [[{other_slug}]])")
 
         # Context section (template-based, no LLM)
@@ -456,21 +489,21 @@ def update_wiki(
 
         for nid in by_degree:
             data = G.nodes[nid]
-            nlabel = data.get("label", nid)
+            nlabel = _safe_label(data.get("label", nid))
             src_file = data.get("source_file", "")
             deg = G.degree(nid)
             page_lines.append(f"- **{nlabel}** ({src_file}) -- {deg} connections")
 
             for _, target, edata in G.out_edges(nid, data=True):
-                tlabel = G.nodes[target].get("label", target) if target in G else target
+                tlabel = _safe_label(G.nodes[target].get("label", target) if target in G else target)
                 tslug = _slugify(tlabel)
-                rel = edata.get("relation", "related")
+                rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - -> {rel} -> [[{tslug}]]")
 
             for source, _, edata in G.in_edges(nid, data=True):
-                slabel = G.nodes[source].get("label", source) if source in G else source
+                slabel = _safe_label(G.nodes[source].get("label", source) if source in G else source)
                 sslug = _slugify(slabel)
-                rel = edata.get("relation", "related")
+                rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - <- {rel} <- [[{sslug}]]")
 
         page_lines.append("")
@@ -480,7 +513,7 @@ def update_wiki(
                 if v in member_set:
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
-                    rel = edata.get("relation", "related")
+                    rel = _safe_label(edata.get("relation", "related"))
                     conf = edata.get("confidence", "EXTRACTED")
                     page_lines.append(f"- {ulabel} -> {rel} -> {vlabel} [{conf}]")
 
@@ -494,7 +527,7 @@ def update_wiki(
                     other_slug = _slugify(other_lbl)
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
-                    rel = edata.get("relation", "related")
+                    rel = _safe_label(edata.get("relation", "related"))
                     page_lines.append(f"- {ulabel} -> {rel} -> {vlabel} (-> [[{other_slug}]])")
 
         page_lines.append("")
@@ -560,7 +593,7 @@ def update_wiki(
     lines.append("## God Nodes")
     for nid in god_nodes:
         data = G.nodes[nid]
-        lbl = data.get("label", nid)
+        lbl = _safe_label(data.get("label", nid))
         deg = G.degree(nid)
         slug = _slugify(lbl)
         lines.append(f"- [[{slug}]] -- {deg} connections")
