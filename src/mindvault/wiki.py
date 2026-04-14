@@ -266,14 +266,14 @@ def generate_wiki(
             for _, target, edata in G.out_edges(nid, data=True):
                 tlabel = _safe_label(G.nodes[target].get("label", target) if target in G else target)
                 tslug = _slugify(tlabel)
-                rel = edata.get("relation", "related")
+                rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - -> {rel} -> [[{tslug}]]")
 
             # Incoming edges
             for source, _, edata in G.in_edges(nid, data=True):
                 slabel = _safe_label(G.nodes[source].get("label", source) if source in G else source)
                 sslug = _slugify(slabel)
-                rel = edata.get("relation", "related")
+                rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - <- {rel} <- [[{sslug}]]")
 
         # Internal relationships
@@ -284,7 +284,7 @@ def generate_wiki(
                 if v in member_set:
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
-                    rel = edata.get("relation", "related")
+                    rel = _safe_label(edata.get("relation", "related"))
                     conf = edata.get("confidence", "EXTRACTED")
                     page_lines.append(f"- {ulabel} -> {rel} -> {vlabel} [{conf}]")
 
@@ -299,7 +299,7 @@ def generate_wiki(
                     other_slug = _slugify(other_lbl)
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
-                    rel = edata.get("relation", "related")
+                    rel = _safe_label(edata.get("relation", "related"))
                     page_lines.append(f"- {ulabel} -> {rel} -> {vlabel} (-> [[{other_slug}]])")
 
         # Context section (template-based, no LLM)
@@ -497,13 +497,13 @@ def update_wiki(
             for _, target, edata in G.out_edges(nid, data=True):
                 tlabel = _safe_label(G.nodes[target].get("label", target) if target in G else target)
                 tslug = _slugify(tlabel)
-                rel = edata.get("relation", "related")
+                rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - -> {rel} -> [[{tslug}]]")
 
             for source, _, edata in G.in_edges(nid, data=True):
                 slabel = _safe_label(G.nodes[source].get("label", source) if source in G else source)
                 sslug = _slugify(slabel)
-                rel = edata.get("relation", "related")
+                rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - <- {rel} <- [[{sslug}]]")
 
         page_lines.append("")
@@ -513,7 +513,7 @@ def update_wiki(
                 if v in member_set:
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
-                    rel = edata.get("relation", "related")
+                    rel = _safe_label(edata.get("relation", "related"))
                     conf = edata.get("confidence", "EXTRACTED")
                     page_lines.append(f"- {ulabel} -> {rel} -> {vlabel} [{conf}]")
 
@@ -527,7 +527,7 @@ def update_wiki(
                     other_slug = _slugify(other_lbl)
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
-                    rel = edata.get("relation", "related")
+                    rel = _safe_label(edata.get("relation", "related"))
                     page_lines.append(f"- {ulabel} -> {rel} -> {vlabel} (-> [[{other_slug}]])")
 
         page_lines.append("")
