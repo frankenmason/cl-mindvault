@@ -1,6 +1,7 @@
 """AST extraction (tree-sitter) + semantic extraction interface."""
 
 from __future__ import annotations
+from mindvault.canonicalize import canonicalize_label
 
 import re
 from pathlib import Path
@@ -1161,6 +1162,9 @@ Rules:
                 # Security: force file_path, ignore LLM-supplied source_file
                 # to prevent path traversal via LLM output (wiki.py reads this path).
                 node["source_file"] = str(file_path)
+                # P6: canonicalize label at ingest (ONCE) — graph invariant
+                if "label" in node:
+                    node["label"] = canonicalize_label(node["label"])
                 if "file_type" not in node:
                     node["file_type"] = "document"
                 node.setdefault("entity_type", "concept")
