@@ -112,6 +112,7 @@ def _collect_key_facts(
     members: list[str],
     max_facts: int = 5,
     max_chars: int = 300,
+    source_root: Path | None = None,
 ) -> list[str]:
     """Extract key text snippets from source files for community context.
 
@@ -145,6 +146,11 @@ def _collect_key_facts(
         except (OSError, RuntimeError):
             continue
         _safe_roots = [Path.cwd().resolve(), (Path.home() / ".mindvault").resolve()]
+        if source_root is not None:
+            try:
+                _safe_roots.append(Path(source_root).resolve(strict=False))
+            except (OSError, RuntimeError):
+                pass
         _norm_src = _os.path.normcase(str(src_path))
         inside = False
         for _root in _safe_roots:
@@ -182,6 +188,7 @@ def generate_wiki(
     labels: dict[int, str],
     output_dir: Path,
     cohesion: dict[int, float] | None = None,
+    source_root: Path | None = None,
 ) -> int:
     """Generate wiki pages from graph communities.
 
@@ -216,7 +223,7 @@ def generate_wiki(
     for cid in sorted(communities.keys()):
         members = communities[cid]
         lbl = labels.get(cid, f"Community {cid}")
-        slug = _slugify(lbl)
+        slug = safe_slugify(lbl)
         score = cohesion.get(cid, 0.0)
         lines.append(f"- [[{slug}]] ({len(members)} nodes, cohesion: {score:.2f})")
 
@@ -228,7 +235,7 @@ def generate_wiki(
         data = G.nodes[nid]
         lbl = _safe_label(data.get("label", nid))
         deg = G.degree(nid)
-        slug = _slugify(lbl)
+        slug = safe_slugify(lbl)
         lines.append(f"- [[{slug}]] -- {deg} connections")
 
     (wiki_dir / "INDEX.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -241,11 +248,11 @@ def generate_wiki(
             continue
 
         lbl = labels.get(cid, f"Community {cid}")
-        slug = _slugify(lbl)
+        slug = safe_slugify(lbl)
         score = cohesion.get(cid, 0.0)
 
         page_lines = [
-            f"# {lbl}",
+            f"# {_safe_label(lbl)}",
             f"Cohesion: {score:.2f} | Nodes: {len(members)}",
             "",
             "## Key Nodes",
@@ -259,20 +266,20 @@ def generate_wiki(
             nlabel = _safe_label(data.get("label", nid))
             src_file = data.get("source_file", "")
             deg = G.degree(nid)
-            nslug = _slugify(nlabel)
+            nslug = safe_slugify(nlabel)
             page_lines.append(f"- **{nlabel}** ({src_file}) -- {deg} connections")
 
             # Outgoing edges
             for _, target, edata in G.out_edges(nid, data=True):
                 tlabel = _safe_label(G.nodes[target].get("label", target) if target in G else target)
-                tslug = _slugify(tlabel)
+                tslug = safe_slugify(tlabel)
                 rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - -> {rel} -> [[{tslug}]]")
 
             # Incoming edges
             for source, _, edata in G.in_edges(nid, data=True):
                 slabel = _safe_label(G.nodes[source].get("label", source) if source in G else source)
-                sslug = _slugify(slabel)
+                sslug = safe_slugify(slabel)
                 rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - <- {rel} <- [[{sslug}]]")
 
@@ -296,7 +303,7 @@ def generate_wiki(
                 if v not in member_set and v in G:
                     other_cid = node_to_comm.get(v)
                     other_lbl = labels.get(other_cid, f"Community {other_cid}") if other_cid is not None else "Unknown"
-                    other_slug = _slugify(other_lbl)
+                    other_slug = safe_slugify(other_lbl)
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
                     rel = _safe_label(edata.get("relation", "related"))
@@ -331,7 +338,7 @@ def generate_wiki(
         )
 
         # Key facts from source files
-        facts = _collect_key_facts(G, members)
+        facts = _collect_key_facts(G, members, source_root=source_root)
         if facts:
             page_lines.append("")
             page_lines.append("### Key Facts")
@@ -352,7 +359,7 @@ def _build_concepts_index(G: nx.DiGraph, communities: dict[int, list[str]], labe
     concepts: dict[str, list[str]] = {}
     for cid, members in communities.items():
         lbl = labels.get(cid, f"Community {cid}")
-        slug = _slugify(lbl)
+        slug = safe_slugify(lbl)
         filename = f"{slug}.md"
         for nid in members:
             node_label = G.nodes[nid].get("label", nid).lower()
@@ -420,6 +427,7 @@ def update_wiki(
     changed_nodes: list[str],
     output_dir: Path,
     cohesion: dict[int, float] | None = None,
+    source_root: Path | None = None,
 ) -> int:
     """Incrementally update only affected wiki pages.
 
@@ -474,14 +482,14 @@ def update_wiki(
             continue
 
         lbl = labels.get(cid, f"Community {cid}")
-        slug = _slugify(lbl)
+        slug = safe_slugify(lbl)
         score = cohesion.get(cid, 0.0)
         member_set = set(members)
         by_degree = sorted(members, key=lambda n: G.degree(n), reverse=True)
 
         # Generate new page content (same logic as generate_wiki)
         page_lines = [
-            f"# {lbl}",
+            f"# {_safe_label(lbl)}",
             f"Cohesion: {score:.2f} | Nodes: {len(members)}",
             "",
             "## Key Nodes",
@@ -496,13 +504,13 @@ def update_wiki(
 
             for _, target, edata in G.out_edges(nid, data=True):
                 tlabel = _safe_label(G.nodes[target].get("label", target) if target in G else target)
-                tslug = _slugify(tlabel)
+                tslug = safe_slugify(tlabel)
                 rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - -> {rel} -> [[{tslug}]]")
 
             for source, _, edata in G.in_edges(nid, data=True):
                 slabel = _safe_label(G.nodes[source].get("label", source) if source in G else source)
-                sslug = _slugify(slabel)
+                sslug = safe_slugify(slabel)
                 rel = _safe_label(edata.get("relation", "related"))
                 page_lines.append(f"  - <- {rel} <- [[{sslug}]]")
 
@@ -524,7 +532,7 @@ def update_wiki(
                 if v not in member_set and v in G:
                     other_cid = node_to_comm.get(v)
                     other_lbl = labels.get(other_cid, f"Community {other_cid}") if other_cid is not None else "Unknown"
-                    other_slug = _slugify(other_lbl)
+                    other_slug = safe_slugify(other_lbl)
                     ulabel = G.nodes[u].get("label", u)
                     vlabel = G.nodes[v].get("label", v)
                     rel = _safe_label(edata.get("relation", "related"))
@@ -552,7 +560,7 @@ def update_wiki(
         )
 
         # Key facts from source files
-        facts = _collect_key_facts(G, members)
+        facts = _collect_key_facts(G, members, source_root=source_root)
         if facts:
             page_lines.append("")
             page_lines.append("### Key Facts")
@@ -584,7 +592,7 @@ def update_wiki(
     for cid in sorted(communities.keys()):
         members = communities[cid]
         lbl = labels.get(cid, f"Community {cid}")
-        slug = _slugify(lbl)
+        slug = safe_slugify(lbl)
         score = cohesion.get(cid, 0.0)
         lines.append(f"- [[{slug}]] ({len(members)} nodes, cohesion: {score:.2f})")
 
@@ -595,7 +603,7 @@ def update_wiki(
         data = G.nodes[nid]
         lbl = _safe_label(data.get("label", nid))
         deg = G.degree(nid)
-        slug = _slugify(lbl)
+        slug = safe_slugify(lbl)
         lines.append(f"- [[{slug}]] -- {deg} connections")
 
     (wiki_dir / "INDEX.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

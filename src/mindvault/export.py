@@ -159,8 +159,14 @@ const hiddenComms = new Set();
 communities.forEach(c => {{
   const row = document.createElement('div');
   row.className = 'comm-filter';
-  row.innerHTML = `<input type="checkbox" checked data-cid="${{c.id}}">
-    <span class="comm-dot" style="background:${{c.color}}"></span>${{c.label}}`;
+  const cb = document.createElement('input');
+  cb.type = 'checkbox'; cb.checked = true; cb.dataset.cid = c.id;
+  const dot = document.createElement('span');
+  dot.className = 'comm-dot'; dot.style.background = c.color;
+  row.appendChild(cb);
+  row.appendChild(document.createTextNode(' '));
+  row.appendChild(dot);
+  row.appendChild(document.createTextNode(' ' + c.label));
   filtersDiv.appendChild(row);
   row.querySelector('input').addEventListener('change', e => {{
     if (e.target.checked) hiddenComms.delete(c.id); else hiddenComms.add(c.id);
